@@ -1,0 +1,73 @@
+# Fraud Transaction Detection System Configuration
+
+data:
+  # Path to the raw dataset (PaySim synthetic financial dataset)
+  raw_data_path: "data/PS_20174392719_1491204167307_log.csv"
+  # Maximum rows to use for training (laptop hardware limitation)
+  max_training_rows: 1000000
+  # Test set ratio
+  test_size: 0.2
+  # Random seed for reproducibility
+  random_state: 42
+  # Chunk size for memory-efficient loading
+  chunk_size: 100000
+
+sampling:
+  # Strategy: stratified, fraud_focused, hybrid
+  strategy: "hybrid"
+  # Fraud oversampling ratio in the sample
+  fraud_oversample_ratio: 3.0
+
+preprocessing:
+  # Feature scaling method: standard, minmax, robust
+  scaling_method: "robust"
+  # Whether to perform feature selection
+  feature_selection: true
+  # Variance threshold for feature removal
+  variance_threshold: 0.01
+
+imbalance:
+  # Method: smote, smoteenn, adasyn, class_weight, hybrid, auto
+  method: "auto"
+  # SMOTE sampling strategy
+  sampling_strategy: 0.3
+
+models:
+  # Models to train and compare
+  candidates:
+    - "logistic_regression"
+    - "random_forest"
+    - "gradient_boosting"
+    - "xgboost"
+    - "lightgbm"
+    - "catboost"
+  # Whether to build ensemble
+  build_ensemble: true
+  # Ensemble method: voting, stacking
+  ensemble_method: "stacking"
+
+tuning:
+  # Method: grid, random, bayesian
+  method: "random"
+  # Number of iterations for random/bayesian search
+  n_iter: 50
+  # Cross-validation folds
+  cv_folds: 5
+  # Scoring metric for optimization
+  scoring: "f1"
+
+evaluation:
+  # Primary metric for model selection
+  primary_metric: "f1"
+  # Whether to generate SHAP explanations
+  shap_analysis: true
+  # Number of samples for SHAP
+  shap_sample_size: 1000
+
+output:
+  # Directory for saved models
+  model_dir: "outputs/models"
+  # Directory for plots
+  plot_dir: "outputs/plots"
+  # Directory for reports
+  report_dir: "outputs/reports"
