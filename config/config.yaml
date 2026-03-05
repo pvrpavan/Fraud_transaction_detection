@@ -13,8 +13,8 @@ data:
   chunk_size: 100000
 
 sampling:
-  # Strategy: stratified, fraud_focused, hybrid
-  strategy: "hybrid"
+  # Strategy: stratified, fraud_focused, hybrid, intelligent
+  strategy: "intelligent"
   # Fraud oversampling ratio in the sample
   fraud_oversample_ratio: 3.0
 

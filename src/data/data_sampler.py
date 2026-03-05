@@ -31,7 +31,7 @@ class DataSampler:
         Args:
             df: Full dataset
             strategy: One of 'stratified', 'fraud_focused', 'clustering',
-                      'anomaly_focused', 'hybrid'
+                      'anomaly_focused', 'hybrid', 'intelligent'
 
         Returns:
             Sampled DataFrame
@@ -52,6 +52,7 @@ class DataSampler:
             "clustering": self._clustering_sample,
             "anomaly_focused": self._anomaly_focused_sample,
             "hybrid": self._hybrid_sample,
+            "intelligent": self._intelligent_sample,
         }
 
         if strategy not in strategy_map:
@@ -330,6 +331,89 @@ class DataSampler:
         return result.sample(frac=1, random_state=self.random_state).reset_index(
             drop=True
         )
+
+    def _intelligent_sample(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Intelligent sampling that prioritizes transactions most informative for fraud detection.
+        Combines multiple criteria: fraud similarity, anomaly score, feature variance, and transaction patterns.
+        """
+        fraud_df = df[df["isFraud"] == 1].copy()
+        legit_df = df[df["isFraud"] == 0].copy()
+
+        legit_budget = self.max_rows - len(fraud_df)
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        numeric_cols = [c for c in numeric_cols if c not in ["isFraud", "isFlaggedFraud"]]
+
+        if len(numeric_cols) == 0:
+            # Fallback to stratified sampling
+            return self._stratified_sample(df)
+
+        # Calculate multiple informativeness scores
+        scores_df = legit_df.copy()
+
+        # 1. Fraud similarity score (lower distance = more similar = higher priority)
+        fraud_means = fraud_df[numeric_cols].mean()
+        fraud_stds = fraud_df[numeric_cols].std().replace(0, 1)
+        legit_features = legit_df[numeric_cols].fillna(0)
+        distances = ((legit_features - fraud_means) / fraud_stds).pow(2).sum(axis=1)
+        scores_df["fraud_similarity"] = 1 / (1 + distances)  # Convert distance to similarity
+
+        # 2. Anomaly score using Isolation Forest
+        iso_forest = IsolationForest(
+            n_estimators=100,
+            contamination=0.1,
+            random_state=self.random_state,
+            n_jobs=-1,
+        )
+        anomaly_scores = iso_forest.fit_predict(legit_features)
+        scores_df["anomaly_score"] = (anomaly_scores == -1).astype(int)  # 1 for anomalies
+
+        # 3. Feature variance score (transactions with extreme values)
+        feature_variances = legit_features.std()
+        variance_scores = ((legit_features - legit_features.mean()) / legit_features.std()).abs().mean(axis=1)
+        scores_df["variance_score"] = variance_scores / variance_scores.max()  # Normalize
+
+        # 4. Transaction amount outliers (high amounts are often fraudulent)
+        if "amount" in scores_df.columns:
+            amount_percentile = scores_df["amount"].quantile(0.95)
+            scores_df["amount_outlier"] = (scores_df["amount"] > amount_percentile).astype(int)
+
+        # 5. Balance change patterns (unusual balance changes)
+        balance_change_cols = [c for c in scores_df.columns if "balance_change" in c]
+        if balance_change_cols:
+            balance_change_score = scores_df[balance_change_cols].abs().max(axis=1)
+            scores_df["balance_change_score"] = balance_change_score / balance_change_score.max()
+
+        # Combine scores with weights
+        weights = {
+            "fraud_similarity": 0.4,
+            "anomaly_score": 0.3,
+            "variance_score": 0.2,
+            "amount_outlier": 0.05,
+            "balance_change_score": 0.05,
+        }
+
+        final_score = np.zeros(len(scores_df))
+        for score_name, weight in weights.items():
+            if score_name in scores_df.columns:
+                final_score += scores_df[score_name].fillna(0) * weight
+
+        scores_df["informativeness_score"] = final_score
+
+        # Select top informative transactions
+        n_informative = int(legit_budget * 0.8)  # 80% most informative
+        n_random = legit_budget - n_informative  # 20% random for diversity
+
+        top_informative = scores_df.nlargest(n_informative, "informativeness_score")
+        remaining = scores_df.drop(top_informative.index)
+        random_sample = remaining.sample(n=min(n_random, len(remaining)), random_state=self.random_state)
+
+        sampled_legit = pd.concat([top_informative, random_sample], ignore_index=True)
+        sampled_legit = sampled_legit.drop(columns=[c for c in sampled_legit.columns if c.endswith("_score") or c.endswith("_outlier")])
+
+        result = pd.concat([fraud_df, sampled_legit], ignore_index=True)
+        return result.sample(frac=1, random_state=self.random_state).reset_index(drop=True)
 
     def evaluate_sampling_strategies(
         self, df: pd.DataFrame
