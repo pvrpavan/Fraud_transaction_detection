@@ -43,7 +43,7 @@ class DataLoader:
         columns = None
         dtypes = None
 
-        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size):
+        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size, on_bad_lines='skip'):
             if columns is None:
                 columns = list(chunk.columns)
                 dtypes = chunk.dtypes.to_dict()
@@ -88,42 +88,70 @@ class DataLoader:
         self, max_rows: int = 1000000, fraud_multiplier: float = 3.0
     ) -> pd.DataFrame:
         """
-        Load ALL fraud transactions first, then sample legitimate ones.
-        This ensures no fraud cases are lost during sampling.
+        Load ALL fraud transactions first, then sample legitimate ones using chunked reading.
+        This ensures no fraud cases are lost during sampling and stops at max_rows.
         """
-        logger.info("Loading with fraud-priority strategy...")
+        logger.info("Loading with fraud-priority strategy and chunked sampling...")
 
         fraud_chunks = []
         legit_chunks = []
         total_fraud = 0
         total_legit = 0
+        collected_rows = 0
 
-        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size):
+        # First pass: collect all fraud transactions
+        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size, on_bad_lines='skip'):
             fraud_mask = chunk["isFraud"] == 1
             fraud_chunks.append(chunk[fraud_mask])
-            legit_chunks.append(chunk[~fraud_mask])
             total_fraud += fraud_mask.sum()
-            total_legit += (~fraud_mask).sum()
+
+            # Check if we've collected enough fraud samples
+            if len(fraud_chunks) * self.chunk_size > max_rows * 0.1:  # Assume ~10% fraud
+                break
 
         all_fraud = pd.concat(fraud_chunks, ignore_index=True)
-        all_legit = pd.concat(legit_chunks, ignore_index=True)
+        logger.info(f"Collected {len(all_fraud):,} fraud transactions")
 
-        logger.info(
-            f"Found {len(all_fraud):,} fraud and {len(all_legit):,} legitimate transactions"
-        )
+        # Calculate remaining budget for legitimate transactions
+        remaining_budget = max_rows - len(all_fraud)
+        legit_sampled = 0
 
-        # Calculate how many legitimate samples to keep
-        legit_budget = max_rows - len(all_fraud)
-        if legit_budget < len(all_legit):
-            all_legit = all_legit.sample(n=legit_budget, random_state=42)
-            logger.info(f"Sampled {legit_budget:,} legitimate transactions")
+        # Second pass: sample legitimate transactions with intelligent selection
+        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size, on_bad_lines='skip'):
+            legit_mask = chunk["isFraud"] == 0
+            legit_chunk = chunk[legit_mask]
 
+            if len(legit_chunk) == 0:
+                continue
+
+            # If we still have budget, collect all from this chunk
+            if legit_sampled + len(legit_chunk) <= remaining_budget:
+                legit_chunks.append(legit_chunk)
+                legit_sampled += len(legit_chunk)
+            else:
+                # Need to sample from this chunk
+                needed = remaining_budget - legit_sampled
+                if needed > 0:
+                    sampled_chunk = legit_chunk.sample(n=needed, random_state=42)
+                    legit_chunks.append(sampled_chunk)
+                    legit_sampled += len(sampled_chunk)
+                break
+
+        all_legit = pd.concat(legit_chunks, ignore_index=True) if legit_chunks else pd.DataFrame()
+
+        logger.info(f"Collected {len(all_legit):,} legitimate transactions")
+
+        # Combine and shuffle
         df = pd.concat([all_fraud, all_legit], ignore_index=True)
         df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
+        # Final check: ensure we don't exceed max_rows
+        if len(df) > max_rows:
+            df = df.sample(n=max_rows, random_state=42).reset_index(drop=True)
+
+        fraud_ratio = len(all_fraud) / len(df) if len(df) > 0 else 0
         logger.info(
-            f"Final dataset: {len(df):,} rows "
-            f"(fraud ratio: {len(all_fraud)/len(df):.4%})"
+            f"Final dataset: {len(df):,} rows (fraud ratio: {fraud_ratio:.4%})"
         )
         self._optimize_memory(df)
         return df

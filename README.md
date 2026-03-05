@@ -98,13 +98,13 @@ Download the PaySim synthetic financial dataset from [Kaggle](https://www.kaggle
 ```bash
 mkdir -p data
 # Place your dataset CSV file in the data/ directory
-# e.g., data/PS_20174392719_1491204167078_log.csv
+# e.g., data/paysim.csv
 ```
 
 ### 4. Run the ML Pipeline
 
 ```bash
-python run.py --data data/PS_20174392719_1491204167078_log.csv
+python run.py --data data/paysim.csv
 ```
 
 Optional arguments:

@@ -201,10 +201,36 @@ class DataPreprocessor:
             type_amount_mean = df.groupby("type")["amount"].transform("mean")
             df["amount_vs_type_mean"] = df["amount"] / (type_amount_mean + 1)
 
-        # Step features (time-based)
+        # Advanced fraud indicators
+        if all(c in df.columns for c in ["amount", "oldbalanceOrg", "newbalanceOrig"]):
+            # Large amount relative to balance
+            df["large_amount_ratio"] = np.where(
+                df["oldbalanceOrg"] > 0,
+                df["amount"] / df["oldbalanceOrg"],
+                0
+            )
+            # Zero balance after large transaction
+            df["zero_balance_after"] = (
+                (df["newbalanceOrig"] == 0) & (df["amount"] > df["oldbalanceOrg"] * 0.9)
+            ).astype(int)
+
+        # Time-based patterns (potential for fraud spikes)
         if "step" in df.columns:
             df["hour_of_day"] = df["step"] % 24
             df["day_of_sim"] = df["step"] // 24
+            # Fraud often happens at odd hours
+            df["unusual_hour"] = ((df["hour_of_day"] < 6) | (df["hour_of_day"] > 22)).astype(int)
+
+        # Round amount detection (fraudsters often use round numbers)
+        if "amount" in df.columns:
+            df["round_amount"] = (df["amount"] == df["amount"].round()).astype(int)
+            df["round_amount_100"] = ((df["amount"] % 100) == 0).astype(int)
+
+        # Balance consistency checks
+        if all(c in df.columns for c in ["oldbalanceOrg", "amount", "newbalanceOrig"]):
+            df["balance_mismatch"] = (
+                (df["oldbalanceOrg"] - df["amount"] - df["newbalanceOrig"]).abs() > 1
+            ).astype(int)
 
         # Replace infinities
         df = df.replace([np.inf, -np.inf], 0)
