@@ -79,21 +79,18 @@ class FraudDetectionPipeline:
         loader = DataLoader(
             file_path=file_path,
             chunk_size=data_config.get("chunk_size", 100000),
+            max_rows=data_config.get("max_training_rows", 1_000_000),
+            start_row=data_config.get("start_row", 0),
         )
 
         # Get dataset info
         dataset_info = loader.get_dataset_info()
         self.results["dataset_info"] = dataset_info
 
-        # Log original dataset statistics
-        logger.info("=" * 60)
-        logger.info("DATASET STATISTICS")
-        logger.info("=" * 60)
-        logger.info(f"Original dataset size: {dataset_info['total_rows']:,} rows")
-        logger.info(f"Original fraud count: {dataset_info['fraud_count']:,}")
-        logger.info(f"Original legitimate count: {dataset_info['legitimate_count']:,}")
-        logger.info(f"Original fraud ratio: {dataset_info['fraud_ratio']:.4%}")
-        logger.info("=" * 60)
+        logger.info(f"Original dataset: {dataset_info['total_rows']:,} rows, "
+                    f"fraud={dataset_info['fraud_count']:,}, "
+                    f"legit={dataset_info['legitimate_count']:,}, "
+                    f"ratio={dataset_info['fraud_ratio']:.4%}")
 
         # Load with fraud-priority
         df = loader.load_fraud_and_sample(
@@ -124,16 +121,10 @@ class FraudDetectionPipeline:
             "fraud_ratio": float(df_sampled["isFraud"].mean()),
         }
 
-        # Log sampling results
-        logger.info("=" * 60)
-        logger.info("SAMPLING RESULTS")
-        logger.info("=" * 60)
-        logger.info(f"Sampling strategy: {strategy}")
-        logger.info(f"Rows after sampling: {len(df_sampled):,}")
-        logger.info(f"Fraud count after sampling: {self.results['sampling']['fraud_count']:,}")
-        logger.info(f"Fraud ratio after sampling: {self.results['sampling']['fraud_ratio']:.4%}")
-        logger.info(f"Reduction: {len(df):,} -> {len(df_sampled):,} rows ({(1 - len(df_sampled)/len(df))*100:.1f}% reduction)")
-        logger.info("=" * 60)
+        logger.info(f"Strategy: {strategy} | "
+                    f"Rows: {len(df):,} -> {len(df_sampled):,} | "
+                    f"Fraud: {self.results['sampling']['fraud_count']:,} | "
+                    f"Ratio: {self.results['sampling']['fraud_ratio']:.4%}")
 
         # Keep a copy for visualization
         df_for_viz = df_sampled.copy()
@@ -314,15 +305,7 @@ class FraudDetectionPipeline:
             final_prob = tuned_prob
             logger.info(f"Selected: Tuned {best_model_name}")
 
-        # Log final model selection
-        logger.info("=" * 60)
-        logger.info("FINAL MODEL SELECTION")
-        logger.info("=" * 60)
-        logger.info(f"Selected model: {self.best_model_name}")
-        logger.info(f"Base model: {best_model_name}")
-        logger.info(f"Hyperparameter tuning: {tuning_config.get('method', 'random')} search")
-        logger.info(f"Best CV score: {best_score:.4f}")
-        logger.info("=" * 60)
+        logger.info(f"Selected: {self.best_model_name} (base: {best_model_name}, CV={best_score:.4f})")
 
         # ============================================================
         # STAGE 10: Evaluation
@@ -341,16 +324,13 @@ class FraudDetectionPipeline:
         )
         self.results["final_evaluation"] = final_eval
 
-        # Log final performance metrics
-        logger.info("=" * 60)
-        logger.info("FINAL MODEL PERFORMANCE")
-        logger.info("=" * 60)
-        logger.info(f"Accuracy:  {final_eval.get('accuracy', 0):.4f} ({final_eval.get('accuracy', 0)*100:.2f}%)")
-        logger.info(f"Precision: {final_eval.get('precision', 0):.4f}")
-        logger.info(f"Recall:    {final_eval.get('recall', 0):.4f} (Fraud detection rate)")
-        logger.info(f"F1-Score:  {final_eval.get('f1_score', 0):.4f}")
-        logger.info(f"ROC-AUC:   {final_eval.get('roc_auc', 0):.4f}")
-        logger.info("=" * 60)
+        logger.info(
+            f"Accuracy={final_eval.get('accuracy', 0):.4f} | "
+            f"Precision={final_eval.get('precision', 0):.4f} | "
+            f"Recall={final_eval.get('recall', 0):.4f} | "
+            f"F1={final_eval.get('f1_score', 0):.4f} | "
+            f"AUC={final_eval.get('roc_auc', 0):.4f}"
+        )
 
         # Evaluate all individual models for comparison
         all_evaluations = {}
@@ -532,21 +512,18 @@ class FraudDetectionPipeline:
             sampler = SMOTE(
                 sampling_strategy=sampling_strategy,
                 random_state=42,
-                n_jobs=-1,
             )
         elif method == "smoteenn":
             from imblearn.combine import SMOTEENN
             sampler = SMOTEENN(
                 sampling_strategy=sampling_strategy,
                 random_state=42,
-                n_jobs=-1,
             )
         elif method == "adasyn":
             from imblearn.over_sampling import ADASYN
             sampler = ADASYN(
                 sampling_strategy=sampling_strategy,
                 random_state=42,
-                n_jobs=-1,
             )
         else:
             logger.warning(f"Unknown method: {method}. Defaulting to SMOTE.")
@@ -554,7 +531,6 @@ class FraudDetectionPipeline:
             sampler = SMOTE(
                 sampling_strategy=sampling_strategy,
                 random_state=42,
-                n_jobs=-1,
             )
             method = "smote"
 
