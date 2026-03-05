@@ -11,6 +11,8 @@ data:
   random_state: 42
   # Chunk size for memory-efficient loading
   chunk_size: 100000
+  # Starting row offset (for flexible windowing, e.g. 0, 1000000, 2000000)
+  start_row: 0
 
 sampling:
   # Strategy: stratified, fraud_focused, hybrid, intelligent

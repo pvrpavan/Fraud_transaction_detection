@@ -3,10 +3,16 @@ Memory-efficient data loading module for large-scale fraud detection datasets.
 
 Supports chunked loading to handle datasets larger than available RAM.
 Designed for the PaySim synthetic financial dataset (6.3M+ transactions).
+
+Features:
+    - Fraud-preserving sampling: ALL fraud transactions are retained
+    - Flexible row selection via start_row / max_rows
+    - Memory-efficient chunk-based reading with pd.read_csv(chunksize=...)
 """
 
 import logging
 import os
+import warnings
 from typing import Optional
 
 import numpy as np
@@ -16,11 +22,28 @@ logger = logging.getLogger(__name__)
 
 
 class DataLoader:
-    """Memory-efficient data loader with chunked processing."""
+    """Memory-efficient data loader with chunked processing and fraud-preserving sampling."""
 
-    def __init__(self, file_path: str, chunk_size: int = 100000):
+    def __init__(
+        self,
+        file_path: str,
+        chunk_size: int = 100_000,
+        max_rows: int = 1_000_000,
+        start_row: int = 0,
+    ):
+        """
+        Initialize DataLoader.
+
+        Args:
+            file_path: Path to the CSV dataset.
+            chunk_size: Number of rows per chunk when reading.
+            max_rows: Maximum total rows in the final dataset.
+            start_row: Row offset to start reading from (for flexible windowing).
+        """
         self.file_path = file_path
         self.chunk_size = chunk_size
+        self.max_rows = max_rows
+        self.start_row = start_row
         self._validate_file()
 
     def _validate_file(self) -> None:
@@ -43,7 +66,9 @@ class DataLoader:
         columns = None
         dtypes = None
 
-        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size, on_bad_lines='skip'):
+        for chunk in pd.read_csv(
+            self.file_path, chunksize=self.chunk_size, on_bad_lines="skip"
+        ):
             if columns is None:
                 columns = list(chunk.columns)
                 dtypes = chunk.dtypes.to_dict()
@@ -66,13 +91,157 @@ class DataLoader:
         )
         return info
 
+    def load_fraud_and_sample(
+        self,
+        max_rows: Optional[int] = None,
+        start_row: Optional[int] = None,
+    ) -> pd.DataFrame:
+        """
+        Fraud-preserving sampling: load ALL fraud transactions first,
+        then fill the remaining budget with legitimate transactions.
+
+        Two-pass approach (memory-efficient):
+            Pass 1 - Collect every fraud row from the entire file.
+            Pass 2 - Stream legitimate rows (respecting start_row offset)
+                     until the budget (max_rows - fraud_count) is filled.
+
+        Args:
+            max_rows: Override for self.max_rows.
+            start_row: Override for self.start_row.
+
+        Returns:
+            DataFrame with all fraud rows + sampled legitimate rows,
+            shuffled, with total size <= max_rows.
+        """
+        max_rows = max_rows or self.max_rows
+        start_row = start_row if start_row is not None else self.start_row
+
+        logger.info(
+            f"Loading with fraud-preserving strategy "
+            f"(max_rows={max_rows:,}, start_row={start_row:,}) ..."
+        )
+
+        # ---- Pass 1: collect ALL fraud transactions (full file scan) ----
+        fraud_chunks = []
+
+        for chunk in pd.read_csv(
+            self.file_path, chunksize=self.chunk_size, on_bad_lines="skip"
+        ):
+            fraud_in_chunk = chunk[chunk["isFraud"] == 1]
+            if len(fraud_in_chunk) > 0:
+                fraud_chunks.append(fraud_in_chunk)
+
+        all_fraud = (
+            pd.concat(fraud_chunks, ignore_index=True)
+            if fraud_chunks
+            else pd.DataFrame()
+        )
+        total_fraud = len(all_fraud)
+        logger.info(f"Pass 1 complete: collected {total_fraud:,} fraud transactions")
+
+        # ---- Fraud safety check ----
+        if total_fraud < 2000:
+            warnings.warn(
+                f"Only {total_fraud} fraud samples found (< 2000). "
+                "Model performance may be degraded. Consider using a larger "
+                "dataset or adjusting the fraud detection threshold.",
+                UserWarning,
+                stacklevel=2,
+            )
+            logger.warning(
+                f"LOW FRAUD WARNING: only {total_fraud} fraud samples found "
+                "(threshold: 2000). Proceeding with all available fraud rows."
+            )
+
+        # ---- Calculate legitimate budget ----
+        legit_budget = max(0, max_rows - total_fraud)
+        logger.info(
+            f"Legitimate budget: {legit_budget:,} "
+            f"(max_rows={max_rows:,} - fraud={total_fraud:,})"
+        )
+
+        # ---- Pass 2: stream legitimate transactions ----
+        legit_chunks = []
+        legit_collected = 0
+        rows_seen = 0
+
+        for chunk in pd.read_csv(
+            self.file_path, chunksize=self.chunk_size, on_bad_lines="skip"
+        ):
+            chunk_end = rows_seen + len(chunk)
+
+            # Skip chunks entirely before start_row
+            if chunk_end <= start_row:
+                rows_seen = chunk_end
+                continue
+
+            # Slice the chunk if it partially overlaps with start_row
+            if rows_seen < start_row:
+                offset_in_chunk = start_row - rows_seen
+                chunk = chunk.iloc[offset_in_chunk:]
+
+            rows_seen = chunk_end
+
+            legit_chunk = chunk[chunk["isFraud"] == 0]
+            if len(legit_chunk) == 0:
+                continue
+
+            needed = legit_budget - legit_collected
+            if needed <= 0:
+                break
+
+            if len(legit_chunk) <= needed:
+                legit_chunks.append(legit_chunk)
+                legit_collected += len(legit_chunk)
+            else:
+                legit_chunks.append(
+                    legit_chunk.sample(n=needed, random_state=42)
+                )
+                legit_collected += needed
+                break
+
+        all_legit = (
+            pd.concat(legit_chunks, ignore_index=True)
+            if legit_chunks
+            else pd.DataFrame()
+        )
+        logger.info(
+            f"Pass 2 complete: collected {len(all_legit):,} legitimate transactions"
+        )
+
+        # ---- Combine and shuffle ----
+        df = pd.concat([all_fraud, all_legit], ignore_index=True)
+        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+        # Final trim - keep all fraud, trim only legit if needed
+        if len(df) > max_rows:
+            fraud_part = df[df["isFraud"] == 1]
+            legit_part = df[df["isFraud"] == 0].sample(
+                n=max_rows - len(fraud_part), random_state=42
+            )
+            df = pd.concat([fraud_part, legit_part], ignore_index=True)
+            df = df.sample(frac=1, random_state=42).reset_index(drop=True)
+
+        fraud_in_final = int(df["isFraud"].sum())
+        legit_in_final = len(df) - fraud_in_final
+        logger.info(
+            f"Final dataset: {len(df):,} rows "
+            f"(fraud={fraud_in_final:,}, legit={legit_in_final:,}, "
+            f"fraud_ratio={fraud_in_final / len(df):.4%})"
+        )
+
+        self._optimize_memory(df)
+        return df
+
     def load_chunked(self, columns: Optional[list] = None) -> pd.DataFrame:
         """Load the full dataset in chunks, optionally selecting specific columns."""
         logger.info(f"Loading dataset in chunks of {self.chunk_size:,} rows...")
 
         chunks = []
         for i, chunk in enumerate(
-            pd.read_csv(self.file_path, chunksize=self.chunk_size, usecols=columns)
+            pd.read_csv(
+                self.file_path, chunksize=self.chunk_size, usecols=columns
+            )
         ):
             chunks.append(chunk)
             if (i + 1) % 10 == 0:
@@ -81,78 +250,6 @@ class DataLoader:
 
         df = pd.concat(chunks, ignore_index=True)
         logger.info(f"Dataset loaded: {len(df):,} rows, {len(df.columns)} columns")
-        self._optimize_memory(df)
-        return df
-
-    def load_fraud_and_sample(
-        self, max_rows: int = 1000000, fraud_multiplier: float = 3.0
-    ) -> pd.DataFrame:
-        """
-        Load ALL fraud transactions first, then sample legitimate ones using chunked reading.
-        This ensures no fraud cases are lost during sampling and stops at max_rows.
-        """
-        logger.info("Loading with fraud-priority strategy and chunked sampling...")
-
-        fraud_chunks = []
-        legit_chunks = []
-        total_fraud = 0
-        total_legit = 0
-        collected_rows = 0
-
-        # First pass: collect all fraud transactions
-        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size, on_bad_lines='skip'):
-            fraud_mask = chunk["isFraud"] == 1
-            fraud_chunks.append(chunk[fraud_mask])
-            total_fraud += fraud_mask.sum()
-
-            # Check if we've collected enough fraud samples
-            if len(fraud_chunks) * self.chunk_size > max_rows * 0.1:  # Assume ~10% fraud
-                break
-
-        all_fraud = pd.concat(fraud_chunks, ignore_index=True)
-        logger.info(f"Collected {len(all_fraud):,} fraud transactions")
-
-        # Calculate remaining budget for legitimate transactions
-        remaining_budget = max_rows - len(all_fraud)
-        legit_sampled = 0
-
-        # Second pass: sample legitimate transactions with intelligent selection
-        for chunk in pd.read_csv(self.file_path, chunksize=self.chunk_size, on_bad_lines='skip'):
-            legit_mask = chunk["isFraud"] == 0
-            legit_chunk = chunk[legit_mask]
-
-            if len(legit_chunk) == 0:
-                continue
-
-            # If we still have budget, collect all from this chunk
-            if legit_sampled + len(legit_chunk) <= remaining_budget:
-                legit_chunks.append(legit_chunk)
-                legit_sampled += len(legit_chunk)
-            else:
-                # Need to sample from this chunk
-                needed = remaining_budget - legit_sampled
-                if needed > 0:
-                    sampled_chunk = legit_chunk.sample(n=needed, random_state=42)
-                    legit_chunks.append(sampled_chunk)
-                    legit_sampled += len(sampled_chunk)
-                break
-
-        all_legit = pd.concat(legit_chunks, ignore_index=True) if legit_chunks else pd.DataFrame()
-
-        logger.info(f"Collected {len(all_legit):,} legitimate transactions")
-
-        # Combine and shuffle
-        df = pd.concat([all_fraud, all_legit], ignore_index=True)
-        df = df.sample(frac=1, random_state=42).reset_index(drop=True)
-
-        # Final check: ensure we don't exceed max_rows
-        if len(df) > max_rows:
-            df = df.sample(n=max_rows, random_state=42).reset_index(drop=True)
-
-        fraud_ratio = len(all_fraud) / len(df) if len(df) > 0 else 0
-        logger.info(
-            f"Final dataset: {len(df):,} rows (fraud ratio: {fraud_ratio:.4%})"
-        )
         self._optimize_memory(df)
         return df
 
@@ -191,7 +288,9 @@ class DataLoader:
             df[col] = df[col].astype(np.float32)
 
         final_memory = df.memory_usage(deep=True).sum() / (1024 * 1024)
-        reduction = (1 - final_memory / initial_memory) * 100
+        reduction = (
+            (1 - final_memory / initial_memory) * 100 if initial_memory > 0 else 0
+        )
         logger.info(
             f"Memory optimized: {initial_memory:.1f}MB -> {final_memory:.1f}MB "
             f"({reduction:.1f}% reduction)"
