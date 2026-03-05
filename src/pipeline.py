@@ -81,6 +81,7 @@ class FraudDetectionPipeline:
             chunk_size=data_config.get("chunk_size", 100000),
             max_rows=data_config.get("max_training_rows", 1_000_000),
             start_row=data_config.get("start_row", 0),
+            target_fraud_ratio=data_config.get("target_fraud_ratio", 0.0),
         )
 
         # Get dataset info
