@@ -363,7 +363,8 @@ All pipeline settings are in `config/config.yaml`. Key options:
 ```yaml
 data:
   max_training_rows: 1000000     # Max rows to use (fraud-preserving sampling)
-  start_row: 0                   # Starting row offset for flexible windowing
+  start_row: 1000000             # Starting row offset for flexible windowing
+  target_fraud_ratio: 0.5        # Dynamic balancing (0.0 = disabled, 0.5 = 50/50)
   chunk_size: 100000             # Chunk size for memory-efficient CSV reading
   test_size: 0.2                 # Train/test split ratio
   random_state: 42               # Random seed for reproducibility
@@ -408,6 +409,33 @@ data:
 ```
 
 > **Note:** Fraud transactions are **always** collected from the entire file regardless of `start_row`. Only legitimate transactions are windowed.
+
+### Dynamic Balanced Sampling
+
+Use `target_fraud_ratio` to automatically balance the fraud vs legitimate split. The loader dynamically adjusts the number of legitimate rows so that the final dataset has the desired fraud ratio.
+
+```yaml
+# 50/50 balanced dataset (~8,213 fraud + ~8,213 legit = ~16,426 total)
+data:
+  target_fraud_ratio: 0.5
+
+# 10% fraud (~8,213 fraud + ~73,917 legit = ~82,130 total)
+data:
+  target_fraud_ratio: 0.1
+
+# Disabled (default) - fill up to max_rows with legit
+data:
+  target_fraud_ratio: 0.0
+```
+
+| `target_fraud_ratio` | Fraud rows | Legit rows  | Total rows  |
+|----------------------|-----------|-------------|-------------|
+| 0.0 (default)        | ~8,213    | ~991,787    | ~1,000,000  |
+| 0.1                  | ~8,213    | ~73,917     | ~82,130     |
+| 0.3                  | ~8,213    | ~19,164     | ~27,377     |
+| 0.5                  | ~8,213    | ~8,213      | ~16,426     |
+
+> **Tip:** A `target_fraud_ratio` of `0.5` gives equal fraud/legit data which can improve model recall. Use `0.0` for the largest possible training set.
 
 ---
 

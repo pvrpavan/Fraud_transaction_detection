@@ -30,6 +30,7 @@ class DataLoader:
         chunk_size: int = 100_000,
         max_rows: int = 1_000_000,
         start_row: int = 0,
+        target_fraud_ratio: float = 0.0,
     ):
         """
         Initialize DataLoader.
@@ -39,11 +40,17 @@ class DataLoader:
             chunk_size: Number of rows per chunk when reading.
             max_rows: Maximum total rows in the final dataset.
             start_row: Row offset to start reading from (for flexible windowing).
+            target_fraud_ratio: Target fraud ratio in the final dataset.
+                0.0  = keep all legit up to max_rows (default, fraud-preserving).
+                >0   = dynamically reduce legit rows so that
+                       fraud / total ~= target_fraud_ratio.
+                       E.g. 0.5 gives roughly 50/50 fraud vs legit.
         """
         self.file_path = file_path
         self.chunk_size = chunk_size
         self.max_rows = max_rows
         self.start_row = start_row
+        self.target_fraud_ratio = target_fraud_ratio
         self._validate_file()
 
     def _validate_file(self) -> None:
@@ -154,11 +161,23 @@ class DataLoader:
             )
 
         # ---- Calculate legitimate budget ----
-        legit_budget = max(0, max_rows - total_fraud)
-        logger.info(
-            f"Legitimate budget: {legit_budget:,} "
-            f"(max_rows={max_rows:,} - fraud={total_fraud:,})"
-        )
+        target_ratio = self.target_fraud_ratio
+        if target_ratio > 0 and total_fraud > 0:
+            # Dynamic balancing: adjust legit count to achieve target fraud ratio
+            # fraud / (fraud + legit) = target_ratio
+            # => legit = fraud * (1 - target_ratio) / target_ratio
+            dynamic_legit = int(total_fraud * (1.0 - target_ratio) / target_ratio)
+            legit_budget = min(dynamic_legit, max(0, max_rows - total_fraud))
+            logger.info(
+                f"Dynamic balancing: target_fraud_ratio={target_ratio:.2%} -> "
+                f"legit_budget={legit_budget:,} (fraud={total_fraud:,})"
+            )
+        else:
+            legit_budget = max(0, max_rows - total_fraud)
+            logger.info(
+                f"Legitimate budget: {legit_budget:,} "
+                f"(max_rows={max_rows:,} - fraud={total_fraud:,})"
+            )
 
         # ---- Pass 2: stream legitimate transactions ----
         legit_chunks = []
