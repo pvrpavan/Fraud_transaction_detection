@@ -169,32 +169,15 @@ class DataPreprocessor:
             # Log transform of amount (handles skewness)
             df["amount_log"] = np.log1p(df["amount"])
 
-        # Error/discrepancy features (strong fraud indicators)
-        if all(
-            c in df.columns
-            for c in ["oldbalanceOrg", "amount", "newbalanceOrig"]
-        ):
-            df["orig_balance_error"] = (
-                df["oldbalanceOrg"] - df["amount"] - df["newbalanceOrig"]
-            )
-            df["orig_error_flag"] = (df["orig_balance_error"].abs() > 1).astype(int)
-
-        if all(
-            c in df.columns
-            for c in ["oldbalanceDest", "amount", "newbalanceDest"]
-        ):
-            df["dest_balance_error"] = (
-                df["oldbalanceDest"] + df["amount"] - df["newbalanceDest"]
-            )
-            df["dest_error_flag"] = (df["dest_balance_error"].abs() > 1).astype(int)
+        # NOTE: Balance error features (orig_balance_error, dest_balance_error,
+        # orig_error_flag, dest_error_flag) were removed because they cause
+        # data leakage in the PaySim synthetic dataset. The simulator generates
+        # balance discrepancies only for fraudulent transactions, making these
+        # features near-perfect proxies for the fraud label.
 
         # Zero balance flags
         if "oldbalanceOrg" in df.columns:
             df["zero_balance_orig"] = (df["oldbalanceOrg"] == 0).astype(int)
-        if "newbalanceOrig" in df.columns:
-            df["emptied_account"] = (
-                (df["newbalanceOrig"] == 0) & (df["oldbalanceOrg"] > 0)
-            ).astype(int)
 
         # Transaction type interaction features
         if "type" in df.columns and "amount" in df.columns:
@@ -202,17 +185,13 @@ class DataPreprocessor:
             df["amount_vs_type_mean"] = df["amount"] / (type_amount_mean + 1)
 
         # Advanced fraud indicators
-        if all(c in df.columns for c in ["amount", "oldbalanceOrg", "newbalanceOrig"]):
+        if all(c in df.columns for c in ["amount", "oldbalanceOrg"]):
             # Large amount relative to balance
             df["large_amount_ratio"] = np.where(
                 df["oldbalanceOrg"] > 0,
                 df["amount"] / df["oldbalanceOrg"],
                 0
             )
-            # Zero balance after large transaction
-            df["zero_balance_after"] = (
-                (df["newbalanceOrig"] == 0) & (df["amount"] > df["oldbalanceOrg"] * 0.9)
-            ).astype(int)
 
         # Time-based patterns (potential for fraud spikes)
         if "step" in df.columns:
@@ -226,11 +205,8 @@ class DataPreprocessor:
             df["round_amount"] = (df["amount"] == df["amount"].round()).astype(int)
             df["round_amount_100"] = ((df["amount"] % 100) == 0).astype(int)
 
-        # Balance consistency checks
-        if all(c in df.columns for c in ["oldbalanceOrg", "amount", "newbalanceOrig"]):
-            df["balance_mismatch"] = (
-                (df["oldbalanceOrg"] - df["amount"] - df["newbalanceOrig"]).abs() > 1
-            ).astype(int)
+        # NOTE: balance_mismatch feature was removed as it is equivalent to
+        # orig_error_flag and causes data leakage in the PaySim dataset.
 
         # Replace infinities
         df = df.replace([np.inf, -np.inf], 0)
