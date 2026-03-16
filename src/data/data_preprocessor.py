@@ -148,6 +148,10 @@ class DataPreprocessor:
                 df["balance_change_orig"] / df["oldbalanceOrg"],
                 0,
             )
+            # Flag: sender balance completely drained
+            df["orig_balance_drained"] = (
+                (df["oldbalanceOrg"] > 0) & (df["newbalanceOrig"] == 0)
+            ).astype(int)
 
         if "oldbalanceDest" in df.columns and "newbalanceDest" in df.columns:
             df["balance_change_dest"] = df["newbalanceDest"] - df["oldbalanceDest"]
@@ -165,9 +169,16 @@ class DataPreprocessor:
                     df["amount"] / df["oldbalanceOrg"],
                     0,
                 )
+                # Flag: amount equals entire sender balance (full drain)
+                df["full_balance_transfer"] = (
+                    np.abs(df["amount"] - df["oldbalanceOrg"]) < 1.0
+                ).astype(int)
 
             # Log transform of amount (handles skewness)
             df["amount_log"] = np.log1p(df["amount"])
+
+            # Sqrt transform (moderate skew reduction)
+            df["amount_sqrt"] = np.sqrt(df["amount"])
 
         # NOTE: Balance error features (orig_balance_error, dest_balance_error,
         # orig_error_flag, dest_error_flag) were removed because they cause
@@ -179,10 +190,25 @@ class DataPreprocessor:
         if "oldbalanceOrg" in df.columns:
             df["zero_balance_orig"] = (df["oldbalanceOrg"] == 0).astype(int)
 
+        if "oldbalanceDest" in df.columns:
+            df["zero_balance_dest"] = (df["oldbalanceDest"] == 0).astype(int)
+
         # Transaction type interaction features
         if "type" in df.columns and "amount" in df.columns:
             type_amount_mean = df.groupby("type")["amount"].transform("mean")
             df["amount_vs_type_mean"] = df["amount"] / (type_amount_mean + 1)
+
+            type_amount_std = df.groupby("type")["amount"].transform("std")
+            df["amount_zscore_by_type"] = np.where(
+                type_amount_std > 0,
+                (df["amount"] - type_amount_mean) / type_amount_std,
+                0,
+            )
+
+        # Transaction type risk encoding (fraud only in TRANSFER & CASH_OUT)
+        if "type" in df.columns:
+            high_risk_types = {"TRANSFER", "CASH_OUT"}
+            df["is_high_risk_type"] = df["type"].isin(high_risk_types).astype(int)
 
         # Advanced fraud indicators
         if all(c in df.columns for c in ["amount", "oldbalanceOrg"]):
@@ -192,18 +218,55 @@ class DataPreprocessor:
                 df["amount"] / df["oldbalanceOrg"],
                 0
             )
+            # Clipped ratio for robustness
+            df["large_amount_ratio_clipped"] = np.clip(
+                df["large_amount_ratio"], 0, 10
+            )
+
+        # Destination account analysis
+        if all(c in df.columns for c in ["oldbalanceDest", "newbalanceDest", "amount"]):
+            # Destination received nothing (funds vanished)
+            df["dest_no_change"] = (
+                np.abs(df["newbalanceDest"] - df["oldbalanceDest"]) < 1.0
+            ).astype(int)
+            # Destination balance relative to amount
+            df["dest_balance_to_amount"] = np.where(
+                df["amount"] > 0,
+                df["oldbalanceDest"] / df["amount"],
+                0,
+            )
+            df["dest_balance_to_amount"] = np.clip(
+                df["dest_balance_to_amount"], 0, 100
+            )
+
+        # Sender-receiver balance interaction
+        if all(c in df.columns for c in ["oldbalanceOrg", "oldbalanceDest"]):
+            df["balance_ratio_org_dest"] = np.where(
+                df["oldbalanceDest"] > 0,
+                df["oldbalanceOrg"] / df["oldbalanceDest"],
+                0,
+            )
+            df["balance_ratio_org_dest"] = np.clip(
+                df["balance_ratio_org_dest"], 0, 100
+            )
 
         # Time-based patterns (potential for fraud spikes)
         if "step" in df.columns:
             df["hour_of_day"] = df["step"] % 24
             df["day_of_sim"] = df["step"] // 24
             # Fraud often happens at odd hours
-            df["unusual_hour"] = ((df["hour_of_day"] < 6) | (df["hour_of_day"] > 22)).astype(int)
+            df["unusual_hour"] = (
+                (df["hour_of_day"] < 6) | (df["hour_of_day"] > 22)
+            ).astype(int)
+            # Cyclical encoding for hour (captures periodicity)
+            df["hour_sin"] = np.sin(2 * np.pi * df["hour_of_day"] / 24)
+            df["hour_cos"] = np.cos(2 * np.pi * df["hour_of_day"] / 24)
 
         # Round amount detection (fraudsters often use round numbers)
         if "amount" in df.columns:
             df["round_amount"] = (df["amount"] == df["amount"].round()).astype(int)
             df["round_amount_100"] = ((df["amount"] % 100) == 0).astype(int)
+            df["round_amount_1000"] = ((df["amount"] % 1000) == 0).astype(int)
 
         # NOTE: balance_mismatch feature was removed as it is equivalent to
         # orig_error_flag and causes data leakage in the PaySim dataset.

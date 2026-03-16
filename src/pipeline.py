@@ -213,6 +213,14 @@ class FraudDetectionPipeline:
             X_train_balanced, y_train_balanced, X_test, y_test
         )
 
+        # Log accuracy for all models
+        from sklearn.metrics import accuracy_score as acc_metric
+        for name, result in training_results.items():
+            if "error" not in result:
+                acc = acc_metric(y_test, result["y_pred"])
+                result["accuracy"] = float(acc)
+                logger.info(f"  {name}: Accuracy={acc:.4f}")
+
         comparison_table = trainer.get_comparison_table()
         self.results["model_comparison"] = comparison_table
 
@@ -283,7 +291,7 @@ class FraudDetectionPipeline:
         logger.info("=" * 60)
 
         # Compare tuned model vs ensemble
-        from sklearn.metrics import f1_score as f1_metric, roc_auc_score as roc_metric
+        from sklearn.metrics import f1_score as f1_metric, roc_auc_score as roc_metric, accuracy_score as acc_fn
 
         tuned_pred = tuned_model.predict(X_test)
         tuned_prob = (
@@ -292,6 +300,15 @@ class FraudDetectionPipeline:
             else tuned_pred.astype(float)
         )
         tuned_f1 = f1_metric(y_test, tuned_pred)
+        tuned_acc = acc_fn(y_test, tuned_pred)
+        logger.info(f"Tuned {best_model_name}: F1={tuned_f1:.4f}, Accuracy={tuned_acc:.4f}")
+
+        if ensemble_result:
+            ens_acc = acc_fn(y_test, ensemble_result["y_pred"])
+            logger.info(
+                f"Ensemble ({ensemble_result.get('type', '')}): "
+                f"F1={ensemble_result.get('f1', 0):.4f}, Accuracy={ens_acc:.4f}"
+            )
 
         if ensemble_result and ensemble_result.get("f1", 0) > tuned_f1:
             self.best_model = ensemble_result["model"]
