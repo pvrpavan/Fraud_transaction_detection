@@ -2,7 +2,7 @@
 
 data:
   # Path to the raw dataset (PaySim synthetic financial dataset)
-  raw_data_path: "data/PS_20174392719_1491204167307_log.csv"
+  raw_data_path: "data/filtered_rows.csv"
   # Maximum rows to use for training (laptop hardware limitation)
   max_training_rows: 1000000
   # Test set ratio
