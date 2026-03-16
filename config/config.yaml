@@ -12,15 +12,15 @@ data:
   # Chunk size for memory-efficient loading
   chunk_size: 100000
   # Starting row offset (for flexible windowing, e.g. 0, 1000000, 2000000)
-  start_row: 1000000
+  start_row: 0
   # Target fraud ratio for dynamic balancing (0.0 = disabled, uses max_rows budget)
   # Set > 0 to dynamically undersample legitimate rows for balanced training
   # E.g. 0.5 = 50/50 fraud/legit, 0.1 = 10% fraud, 0.0 = fill up to max_rows
-  target_fraud_ratio: 0.5
+  target_fraud_ratio: 0.0
 
 sampling:
   # Strategy: stratified, fraud_focused, hybrid, intelligent
-  strategy: "intelligent"
+  strategy: "stratified"
   # Fraud oversampling ratio in the sample
   fraud_oversample_ratio: 3.0
 
