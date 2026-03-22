@@ -184,40 +184,42 @@ class DataLoader:
         legit_collected = 0
         rows_seen = 0
 
-        for chunk in pd.read_csv(
+        reader = pd.read_csv(
             self.file_path, chunksize=self.chunk_size, on_bad_lines="skip"
-        ):
-            chunk_end = rows_seen + len(chunk)
+        )
+        with reader:
+            for chunk in reader:
+                chunk_end = rows_seen + len(chunk)
 
-            # Skip chunks entirely before start_row
-            if chunk_end <= start_row:
+                # Skip chunks entirely before start_row
+                if chunk_end <= start_row:
+                    rows_seen = chunk_end
+                    continue
+
+                # Slice the chunk if it partially overlaps with start_row
+                if rows_seen < start_row:
+                    offset_in_chunk = start_row - rows_seen
+                    chunk = chunk.iloc[offset_in_chunk:]
+
                 rows_seen = chunk_end
-                continue
 
-            # Slice the chunk if it partially overlaps with start_row
-            if rows_seen < start_row:
-                offset_in_chunk = start_row - rows_seen
-                chunk = chunk.iloc[offset_in_chunk:]
+                legit_chunk = chunk[chunk["isFraud"] == 0]
+                if len(legit_chunk) == 0:
+                    continue
 
-            rows_seen = chunk_end
+                needed = legit_budget - legit_collected
+                if needed <= 0:
+                    break
 
-            legit_chunk = chunk[chunk["isFraud"] == 0]
-            if len(legit_chunk) == 0:
-                continue
-
-            needed = legit_budget - legit_collected
-            if needed <= 0:
-                break
-
-            if len(legit_chunk) <= needed:
-                legit_chunks.append(legit_chunk)
-                legit_collected += len(legit_chunk)
-            else:
-                legit_chunks.append(
-                    legit_chunk.sample(n=needed, random_state=42)
-                )
-                legit_collected += needed
-                break
+                if len(legit_chunk) <= needed:
+                    legit_chunks.append(legit_chunk)
+                    legit_collected += len(legit_chunk)
+                else:
+                    legit_chunks.append(
+                        legit_chunk.sample(n=needed, random_state=42)
+                    )
+                    legit_collected += needed
+                    break
 
         all_legit = (
             pd.concat(legit_chunks, ignore_index=True)

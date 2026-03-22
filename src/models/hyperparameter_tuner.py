@@ -22,8 +22,7 @@ class HyperparameterTuner:
     PARAM_SPACES = {
         "logistic_regression": {
             "C": [0.1, 1, 5, 10, 50, 100],
-            "l1_ratio": [0, 1],
-            "solver": ["saga"],
+            "solver": ["lbfgs"],
             "max_iter": [5000],
         },
         "random_forest": {
