@@ -53,7 +53,7 @@ class ModelTrainer:
             "class": LogisticRegression,
             "params": {
                 "C": 10.0,
-                "max_iter": 2000,
+                "max_iter": 5000,
                 "class_weight": "balanced",
                 "solver": "saga",
                 "l1_ratio": 0,

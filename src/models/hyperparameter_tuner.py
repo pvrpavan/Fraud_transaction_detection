@@ -24,7 +24,7 @@ class HyperparameterTuner:
             "C": [0.1, 1, 5, 10, 50, 100],
             "l1_ratio": [0, 1],
             "solver": ["saga"],
-            "max_iter": [2000],
+            "max_iter": [5000],
         },
         "random_forest": {
             "n_estimators": [300, 500, 700, 1000],

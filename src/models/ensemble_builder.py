@@ -103,7 +103,7 @@ class EnsembleBuilder:
         estimators = [(name, model) for name, model in models.items()]
 
         meta_learner = LogisticRegression(
-            max_iter=1000,
+            max_iter=5000,
             random_state=self.random_state,
             class_weight="balanced",
         )
