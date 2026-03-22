@@ -18,7 +18,6 @@ env/
 *.csv
 *.xlsx
 *.xls
-*.json
 data/
 
 # ML outputs
@@ -36,11 +35,15 @@ Thumbs.db
 
 # Environment
 .env
-!frontend/fraud-dashboard/.env
+!frontend/.env
 
 # Node
 node_modules/
-frontend/fraud-dashboard/dist/
+frontend/dist/
+.vite/
+
+# ML extra
+catboost_info/
 
 # Logs
 *.log
