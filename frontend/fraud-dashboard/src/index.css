@@ -49,6 +49,14 @@
   .animate-slide-up {
     animation: slideUp 0.6s ease-out forwards;
   }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @keyframes fadeIn {
@@ -61,8 +69,15 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Selection styling */
+::selection {
+  background: rgba(99, 102, 241, 0.3);
+  color: #e2e8f0;
+}
+
 ::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: #0f172a;
@@ -73,5 +88,10 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
+}
+
+/* Smooth transitions for all interactive elements */
+button, a, input, select {
+  transition: all 0.2s ease;
 }
 
