@@ -33,6 +33,7 @@ class DataPreprocessor:
         self.selected_features: Optional[list] = None
         self.feature_importance: Optional[dict] = None
         self._is_fitted = False
+        self._type_amount_stats: dict = {}
 
     def fit_transform(
         self, df: pd.DataFrame, target_col: str = "isFraud"
@@ -165,13 +166,25 @@ class DataPreprocessor:
 
         # Transaction type interaction features
         if "type" in df.columns and "amount" in df.columns:
-            type_amount_mean = df.groupby("type")["amount"].transform("mean")
-            df["amount_vs_type_mean"] = df["amount"] / (type_amount_mean + 1)
+            if not self._type_amount_stats:
+                # During training: compute and store per-type stats
+                type_stats = df.groupby("type")["amount"].agg(["mean", "std"])
+                self._type_amount_stats = {
+                    t: {"mean": row["mean"], "std": row["std"]}
+                    for t, row in type_stats.iterrows()
+                }
 
-            type_amount_std = df.groupby("type")["amount"].transform("std")
+            # Use stored stats for both training and prediction
+            type_means = df["type"].map(
+                lambda t: self._type_amount_stats.get(t, {}).get("mean", df["amount"].mean())
+            )
+            type_stds = df["type"].map(
+                lambda t: self._type_amount_stats.get(t, {}).get("std", 1.0)
+            )
+            df["amount_vs_type_mean"] = df["amount"] / (type_means + 1)
             df["amount_zscore_by_type"] = np.where(
-                type_amount_std > 0,
-                (df["amount"] - type_amount_mean) / type_amount_std,
+                type_stds > 0,
+                (df["amount"] - type_means) / type_stds,
                 0,
             )
 
