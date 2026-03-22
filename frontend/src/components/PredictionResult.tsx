@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle, Search } from 'lucide-react';
+import { AlertTriangle, CheckCircle, Search, Loader2 } from 'lucide-react';
 
 interface PredictionData {
   is_fraud: boolean;
@@ -11,9 +11,22 @@ interface PredictionData {
 
 interface PredictionResultProps {
   prediction: PredictionData | null;
+  loading?: boolean;
 }
 
-export function PredictionResult({ prediction }: PredictionResultProps) {
+export function PredictionResult({ prediction, loading }: PredictionResultProps) {
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+        <div className="p-4 rounded-full bg-indigo-500/10 mb-4">
+          <Loader2 className="w-10 h-10 animate-spin text-indigo-400" />
+        </div>
+        <p className="text-sm font-medium">Analyzing transaction...</p>
+        <p className="text-xs mt-1 text-gray-600">Running fraud detection model</p>
+      </div>
+    );
+  }
+
   if (!prediction) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500">

@@ -54,6 +54,7 @@ function App() {
   }, [fetchData]);
 
   const handlePredict = async (data: Record<string, unknown>) => {
+    setPrediction(null);
     setPredLoading(true);
     try {
       const res = await fetch(`${API_URL}/api/predict`, {
