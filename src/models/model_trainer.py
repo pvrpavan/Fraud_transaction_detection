@@ -13,7 +13,6 @@ import numpy as np
 from sklearn.ensemble import (
     GradientBoostingClassifier,
     RandomForestClassifier,
-    VotingClassifier,
 )
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (

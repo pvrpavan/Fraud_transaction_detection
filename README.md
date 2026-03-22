@@ -177,8 +177,7 @@ Fraud_transaction_detection/
 |-- backend/
 |   |-- app/
 |       |-- main.py               # FastAPI REST API
-|-- frontend/
-|   |-- fraud-dashboard/          # React + TypeScript dashboard
+|-- frontend/                       # React + TypeScript dashboard
 |-- config/
 |   |-- config.yaml               # Central configuration
 |-- run.py                        # CLI entry point
@@ -293,17 +292,19 @@ pip install -r requirements.txt
 
 ### 5. Dataset
 
-The project includes a pre-filtered dataset (`data/filtered_rows.csv`) ready to use. No additional download is required.
+Download the PaySim dataset and place it in the `data/` directory:
 
-> **Dataset Info:**
+1. Download from [Kaggle - PaySim](https://www.kaggle.com/datasets/ealaxi/paysim1)
+2. Place the CSV file as `data/filtered_rows.csv` (or any name, and update the `--data` flag)
+
+> **Dataset Info (PaySim):**
 >
-> - **Rows:** 150,000 transactions
-> - **Fraud transactions:** 8,213 (5.47% of total)
-> - **Legitimate transactions:** 141,787 (94.53% of total)
+> - **Full dataset:** ~6.3M transactions
+> - **Fraud transactions:** ~8,213 (0.13% of total)
 > - **Transaction Types:** CASH_OUT, PAYMENT, CASH_IN, TRANSFER, DEBIT
 > - **Columns:** step, type, amount, nameOrig, oldbalanceOrg, newbalanceOrig, nameDest, oldbalanceDest, newbalanceDest, isFraud, isFlaggedFraud
 >
-> If you want to use the full PaySim dataset (~6.3M rows), download from [Kaggle](https://www.kaggle.com/datasets/ealaxi/paysim1) and update the data path.
+> The pipeline supports chunked loading and will handle large files efficiently. You can also use a filtered/smaller subset.
 
 ---
 
@@ -411,7 +412,7 @@ uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 ## Running the Frontend Dashboard
 
 ```bash
-cd frontend/fraud-dashboard
+cd frontend
 npm install
 npm run dev
 ```

@@ -72,7 +72,7 @@ Examples:
     logger = logging.getLogger(__name__)
 
     logger.info("=" * 60)
-    logger.info("FRAUD TRANSACTION DETECTION SYSTEM v1.0.0")
+    logger.info("FRAUD TRANSACTION DETECTION SYSTEM v2.0.0")
     logger.info("=" * 60)
 
     try:
