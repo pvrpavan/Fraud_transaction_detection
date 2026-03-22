@@ -2,9 +2,9 @@
 
 data:
   # Path to the raw dataset (PaySim synthetic financial dataset)
-  raw_data_path: "data/filtered_rows.csv"
+  raw_data_path: "data/augmented_transactions.csv"
   # Maximum rows to use for training
-  max_training_rows: 150000
+  max_training_rows: 50000
   # Test set ratio
   test_size: 0.2
   # Random seed for reproducibility
@@ -16,14 +16,17 @@ data:
   # Target fraud ratio for dynamic balancing (0.0 = disabled, uses max_rows budget)
   # Set > 0 to dynamically undersample legitimate rows for balanced training
   # E.g. 0.5 = 50/50 fraud/legit, 0.1 = 10% fraud, 0.0 = fill up to max_rows
-  # Using 0.12 to produce meaningful accuracy in the 90-95% range
-  target_fraud_ratio: 0.12
+  # Balanced sampling: 50/50 fraud/legit for realistic evaluation metrics
+  # This prevents accuracy inflation from class imbalance
+  target_fraud_ratio: 0.50
 
 sampling:
   # Strategy: stratified, fraud_focused, hybrid, intelligent
   strategy: "stratified"
+  # Moderate oversampling to avoid inflating fraud representation
+  # Lower ratio keeps the problem realistically challenging
   # Fraud oversampling ratio in the sample
-  fraud_oversample_ratio: 3.0
+  fraud_oversample_ratio: 1.5
 
 preprocessing:
   # Feature scaling method: standard, minmax, robust
@@ -35,8 +38,9 @@ preprocessing:
 
 imbalance:
   # Method: smote, smoteenn, adasyn, class_weight, hybrid, auto
-  method: "smote"
-  # SMOTE sampling strategy (ratio of minority to majority class)
+  method: "class_weight"
+  # Using class_weight since dataset is already balanced via target_fraud_ratio
+  # No synthetic oversampling needed
   sampling_strategy: 0.5
 
 models:
@@ -57,7 +61,7 @@ tuning:
   # Method: grid, random, bayesian
   method: "random"
   # Number of iterations for random/bayesian search
-  n_iter: 60
+  n_iter: 10
   # Cross-validation folds
   cv_folds: 5
   # Scoring metric for optimization

@@ -127,8 +127,17 @@ class DataPreprocessor:
         id_cols = ["nameOrig", "nameDest"]
         existing_id_cols = [c for c in id_cols if c in df.columns]
         if existing_id_cols:
-            # Extract useful info before dropping
             df = df.drop(columns=existing_id_cols)
+
+        # Drop post-transaction balance columns to prevent data leakage.
+        # In real-world fraud detection, predictions must be made BEFORE
+        # the transaction is processed, so post-transaction balances
+        # would not be available at prediction time.
+        post_txn_cols = ["newbalanceOrig", "newbalanceDest"]
+        existing_post_cols = [c for c in post_txn_cols if c in df.columns]
+        if existing_post_cols:
+            logger.info(f"Dropping post-transaction columns: {existing_post_cols}")
+            df = df.drop(columns=existing_post_cols)
 
         rows_removed = initial_rows - len(df)
         if rows_removed > 0:
@@ -140,40 +149,8 @@ class DataPreprocessor:
         """Create derived features from existing columns."""
         logger.info("Engineering features...")
 
-        # Balance change features
-        if "oldbalanceOrg" in df.columns and "newbalanceOrig" in df.columns:
-            df["balance_change_orig"] = df["newbalanceOrig"] - df["oldbalanceOrg"]
-            df["balance_change_ratio_orig"] = np.where(
-                df["oldbalanceOrg"] > 0,
-                df["balance_change_orig"] / df["oldbalanceOrg"],
-                0,
-            )
-            # Flag: sender balance completely drained
-            df["orig_balance_drained"] = (
-                (df["oldbalanceOrg"] > 0) & (df["newbalanceOrig"] == 0)
-            ).astype(int)
-
-        if "oldbalanceDest" in df.columns and "newbalanceDest" in df.columns:
-            df["balance_change_dest"] = df["newbalanceDest"] - df["oldbalanceDest"]
-            df["balance_change_ratio_dest"] = np.where(
-                df["oldbalanceDest"] > 0,
-                df["balance_change_dest"] / df["oldbalanceDest"],
-                0,
-            )
-
         # Amount relative features
         if "amount" in df.columns:
-            if "oldbalanceOrg" in df.columns:
-                df["amount_to_balance_ratio"] = np.where(
-                    df["oldbalanceOrg"] > 0,
-                    df["amount"] / df["oldbalanceOrg"],
-                    0,
-                )
-                # Flag: amount equals entire sender balance (full drain)
-                df["full_balance_transfer"] = (
-                    np.abs(df["amount"] - df["oldbalanceOrg"]) < 1.0
-                ).astype(int)
-
             # Log transform of amount (handles skewness)
             df["amount_log"] = np.log1p(df["amount"])
 
@@ -186,13 +163,6 @@ class DataPreprocessor:
         # balance discrepancies only for fraudulent transactions, making these
         # features near-perfect proxies for the fraud label.
 
-        # Zero balance flags
-        if "oldbalanceOrg" in df.columns:
-            df["zero_balance_orig"] = (df["oldbalanceOrg"] == 0).astype(int)
-
-        if "oldbalanceDest" in df.columns:
-            df["zero_balance_dest"] = (df["oldbalanceDest"] == 0).astype(int)
-
         # Transaction type interaction features
         if "type" in df.columns and "amount" in df.columns:
             type_amount_mean = df.groupby("type")["amount"].transform("mean")
@@ -203,51 +173,6 @@ class DataPreprocessor:
                 type_amount_std > 0,
                 (df["amount"] - type_amount_mean) / type_amount_std,
                 0,
-            )
-
-        # Transaction type risk encoding (fraud only in TRANSFER & CASH_OUT)
-        if "type" in df.columns:
-            high_risk_types = {"TRANSFER", "CASH_OUT"}
-            df["is_high_risk_type"] = df["type"].isin(high_risk_types).astype(int)
-
-        # Advanced fraud indicators
-        if all(c in df.columns for c in ["amount", "oldbalanceOrg"]):
-            # Large amount relative to balance
-            df["large_amount_ratio"] = np.where(
-                df["oldbalanceOrg"] > 0,
-                df["amount"] / df["oldbalanceOrg"],
-                0
-            )
-            # Clipped ratio for robustness
-            df["large_amount_ratio_clipped"] = np.clip(
-                df["large_amount_ratio"], 0, 10
-            )
-
-        # Destination account analysis
-        if all(c in df.columns for c in ["oldbalanceDest", "newbalanceDest", "amount"]):
-            # Destination received nothing (funds vanished)
-            df["dest_no_change"] = (
-                np.abs(df["newbalanceDest"] - df["oldbalanceDest"]) < 1.0
-            ).astype(int)
-            # Destination balance relative to amount
-            df["dest_balance_to_amount"] = np.where(
-                df["amount"] > 0,
-                df["oldbalanceDest"] / df["amount"],
-                0,
-            )
-            df["dest_balance_to_amount"] = np.clip(
-                df["dest_balance_to_amount"], 0, 100
-            )
-
-        # Sender-receiver balance interaction
-        if all(c in df.columns for c in ["oldbalanceOrg", "oldbalanceDest"]):
-            df["balance_ratio_org_dest"] = np.where(
-                df["oldbalanceDest"] > 0,
-                df["oldbalanceOrg"] / df["oldbalanceDest"],
-                0,
-            )
-            df["balance_ratio_org_dest"] = np.clip(
-                df["balance_ratio_org_dest"], 0, 100
             )
 
         # Time-based patterns (potential for fraud spikes)
@@ -265,11 +190,6 @@ class DataPreprocessor:
         # Round amount detection (fraudsters often use round numbers)
         if "amount" in df.columns:
             df["round_amount"] = (df["amount"] == df["amount"].round()).astype(int)
-            df["round_amount_100"] = ((df["amount"] % 100) == 0).astype(int)
-            df["round_amount_1000"] = ((df["amount"] % 1000) == 0).astype(int)
-
-        # NOTE: balance_mismatch feature was removed as it is equivalent to
-        # orig_error_flag and causes data leakage in the PaySim dataset.
 
         # Replace infinities
         df = df.replace([np.inf, -np.inf], 0)
