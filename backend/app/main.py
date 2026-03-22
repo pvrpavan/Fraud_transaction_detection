@@ -1,32 +1,38 @@
 """
-Fraud Transaction Detection API
+FraudGuard AI - Fraud Transaction Detection API
 
-FastAPI backend serving the fraud detection model results,
-predictions, and dashboard data.
+Production-grade FastAPI backend serving the fraud detection model results,
+predictions, and dashboard data. Built as a final year college project.
 """
 
 import json
 import os
 import pickle
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # Add project root to path
 PROJECT_ROOT = str(Path(__file__).parent.parent.parent)
 sys.path.insert(0, PROJECT_ROOT)
 
 app = FastAPI(
-    title="Fraud Transaction Detection API",
-    description="Production-grade ML-powered fraud detection system",
-    version="1.0.0",
+    title="FraudGuard AI - Fraud Transaction Detection API",
+    description=(
+        "Production-grade ML-powered fraud detection system using an ensemble of "
+        "6 machine learning models with SHAP explainability. Built as a final year "
+        "college project demonstrating real-world fraud detection capabilities."
+    ),
+    version="2.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS
@@ -44,14 +50,27 @@ app.add_middleware(
 # ============================================================
 
 class TransactionInput(BaseModel):
-    """Single transaction for prediction."""
-    step: int = 1
-    type: str = "TRANSFER"
-    amount: float = 10000.0
-    oldbalanceOrg: float = 50000.0
-    newbalanceOrig: float = 40000.0
-    oldbalanceDest: float = 0.0
-    newbalanceDest: float = 10000.0
+    """Single transaction for fraud prediction."""
+    step: int = Field(default=1, description="Time step of the transaction (1 hour per step)")
+    type: str = Field(default="TRANSFER", description="Transaction type: PAYMENT, TRANSFER, CASH_OUT, DEBIT, CASH_IN")
+    amount: float = Field(default=10000.0, description="Transaction amount")
+    oldbalanceOrg: float = Field(default=50000.0, description="Origin account balance before transaction")
+    newbalanceOrig: float = Field(default=40000.0, description="Origin account balance after transaction")
+    oldbalanceDest: float = Field(default=0.0, description="Destination account balance before transaction")
+    newbalanceDest: float = Field(default=10000.0, description="Destination account balance after transaction")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "step": 1,
+                "type": "TRANSFER",
+                "amount": 181000.0,
+                "oldbalanceOrg": 181000.0,
+                "newbalanceOrig": 0.0,
+                "oldbalanceDest": 0.0,
+                "newbalanceDest": 0.0,
+            }
+        }
 
 
 class BatchPredictionInput(BaseModel):
@@ -59,11 +78,14 @@ class BatchPredictionInput(BaseModel):
     transactions: list[dict]
 
 
-class PipelineStatus(BaseModel):
-    """Pipeline execution status."""
-    status: str
-    message: str
-    progress: Optional[float] = None
+class PredictionResponse(BaseModel):
+    """Prediction result for a single transaction."""
+    is_fraud: bool
+    fraud_probability: float
+    risk_level: str
+    confidence: float
+    risk_factors: list[str] = []
+    recommendation: str = ""
 
 
 # ============================================================
@@ -72,6 +94,7 @@ class PipelineStatus(BaseModel):
 
 _model_data = None
 _pipeline_results = None
+_startup_time = None
 
 
 def _load_model():
@@ -100,15 +123,74 @@ def _load_results():
 # API Routes
 # ============================================================
 
-@app.get("/")
+def _analyze_risk_factors(transaction: TransactionInput) -> list[str]:
+    """Analyze transaction characteristics to identify risk factors."""
+    factors = []
+    if transaction.type in ("TRANSFER", "CASH_OUT"):
+        factors.append(f"High-risk transaction type: {transaction.type}")
+    if transaction.amount > 200000:
+        factors.append(f"Very large transaction amount: {transaction.amount:,.2f}")
+    elif transaction.amount > 50000:
+        factors.append(f"Large transaction amount: {transaction.amount:,.2f}")
+    if transaction.oldbalanceOrg > 0 and transaction.newbalanceOrig == 0:
+        factors.append("Complete account drain: entire balance transferred out")
+    balance_change = transaction.oldbalanceOrg - transaction.newbalanceOrig
+    if transaction.amount > 0 and abs(balance_change - transaction.amount) > 0.01:
+        factors.append("Balance change does not match transaction amount")
+    if transaction.oldbalanceDest == 0 and transaction.newbalanceDest == 0 and transaction.type == "TRANSFER":
+        factors.append("Destination balance unchanged after receiving transfer")
+    if transaction.amount > transaction.oldbalanceOrg and transaction.oldbalanceOrg > 0:
+        factors.append("Transaction amount exceeds available balance")
+    return factors
+
+
+def _get_recommendation(is_fraud: bool, probability: float, risk_level: str) -> str:
+    """Generate a recommendation based on prediction results."""
+    if is_fraud and risk_level == "HIGH":
+        return "BLOCK immediately. Flag for manual review by fraud investigation team."
+    elif is_fraud and risk_level == "MEDIUM":
+        return "HOLD transaction. Request additional verification from account holder."
+    elif probability > 0.3:
+        return "MONITOR closely. Elevated risk detected - apply enhanced due diligence."
+    else:
+        return "APPROVE transaction. Risk within acceptable parameters."
+
+
+# ============================================================
+# API Routes
+# ============================================================
+
+@app.get("/", tags=["System"])
 async def root():
-    """API health check."""
+    """API health check and system overview."""
     return {
-        "name": "Fraud Transaction Detection API",
-        "version": "1.0.0",
+        "name": "FraudGuard AI - Fraud Transaction Detection API",
+        "version": "2.0.0",
         "status": "running",
+        "uptime": str(datetime.utcnow() - _startup_time) if _startup_time else "unknown",
         "model_loaded": _model_data is not None,
         "results_available": _pipeline_results is not None,
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/api/health",
+            "predict": "/api/predict",
+            "results": "/api/results/summary",
+            "plots": "/api/plots",
+        },
+    }
+
+
+@app.get("/api/health", tags=["System"])
+async def health_check():
+    """Detailed health check for monitoring."""
+    model_loaded = _model_data is not None or _load_model()
+    results_loaded = _pipeline_results is not None or _load_results()
+    return {
+        "status": "healthy" if model_loaded and results_loaded else "degraded",
+        "model_status": "loaded" if model_loaded else "not_loaded",
+        "results_status": "available" if results_loaded else "not_available",
+        "model_name": _model_data.get("model_name") if _model_data else None,
+        "timestamp": datetime.utcnow().isoformat(),
     }
 
 
@@ -134,21 +216,21 @@ async def get_status():
     }
 
 
-@app.get("/api/results")
+@app.get("/api/results", tags=["Results"])
 async def get_results():
     """Get complete pipeline results."""
     if _pipeline_results is None:
         if not _load_results():
             raise HTTPException(
                 status_code=404,
-                detail="No pipeline results found. Run the ML pipeline first.",
+                detail="No pipeline results found. Run the ML pipeline first: python run.py --data data/filtered_rows.csv",
             )
     return _pipeline_results
 
 
-@app.get("/api/results/summary")
+@app.get("/api/results/summary", tags=["Results"])
 async def get_results_summary():
-    """Get a summary of the pipeline results."""
+    """Get a comprehensive summary of the pipeline results for the dashboard."""
     if _pipeline_results is None:
         if not _load_results():
             raise HTTPException(
@@ -194,9 +276,9 @@ async def get_results_summary():
     }
 
 
-@app.get("/api/results/evaluations")
+@app.get("/api/results/evaluations", tags=["Results"])
 async def get_all_evaluations():
-    """Get evaluation results for all models."""
+    """Get detailed evaluation results for all trained models."""
     if _pipeline_results is None:
         if not _load_results():
             raise HTTPException(status_code=404, detail="No results found.")
@@ -204,9 +286,9 @@ async def get_all_evaluations():
     return _pipeline_results.get("all_evaluations", {})
 
 
-@app.get("/api/results/feature-importance")
+@app.get("/api/results/feature-importance", tags=["Results"])
 async def get_feature_importance():
-    """Get feature importance data."""
+    """Get SHAP-based feature importance data."""
     if _pipeline_results is None:
         if not _load_results():
             raise HTTPException(status_code=404, detail="No results found.")
@@ -218,9 +300,9 @@ async def get_feature_importance():
     }
 
 
-@app.post("/api/predict")
+@app.post("/api/predict", tags=["Prediction"], response_model=PredictionResponse)
 async def predict_transaction(transaction: TransactionInput):
-    """Predict if a single transaction is fraudulent."""
+    """Predict if a single transaction is fraudulent with risk analysis."""
     if _model_data is None:
         if not _load_model():
             raise HTTPException(
@@ -249,22 +331,26 @@ async def predict_transaction(transaction: TransactionInput):
             else prediction
         )
 
-        return {
-            "is_fraud": bool(prediction),
-            "fraud_probability": probability,
-            "risk_level": (
-                "HIGH" if probability > 0.7
-                else "MEDIUM" if probability > 0.3
-                else "LOW"
-            ),
-            "confidence": float(max(probability, 1 - probability)),
-        }
+        is_fraud = bool(prediction)
+        risk_level = "HIGH" if probability > 0.7 else "MEDIUM" if probability > 0.3 else "LOW"
+        confidence = float(max(probability, 1 - probability))
+        risk_factors = _analyze_risk_factors(transaction)
+        recommendation = _get_recommendation(is_fraud, probability, risk_level)
+
+        return PredictionResponse(
+            is_fraud=is_fraud,
+            fraud_probability=probability,
+            risk_level=risk_level,
+            confidence=confidence,
+            risk_factors=risk_factors,
+            recommendation=recommendation,
+        )
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
 
 
-@app.post("/api/predict/batch")
+@app.post("/api/predict/batch", tags=["Prediction"])
 async def predict_batch(batch: BatchPredictionInput):
     """Predict fraud for a batch of transactions."""
     if _model_data is None:
@@ -306,6 +392,7 @@ async def predict_batch(batch: BatchPredictionInput):
             "total_transactions": len(results),
             "fraud_detected": fraud_count,
             "legitimate": len(results) - fraud_count,
+            "fraud_rate": fraud_count / len(results) if results else 0,
             "predictions": results,
         }
 
@@ -313,7 +400,7 @@ async def predict_batch(batch: BatchPredictionInput):
         raise HTTPException(status_code=500, detail=f"Batch prediction failed: {str(e)}")
 
 
-@app.get("/api/plots/{filename}")
+@app.get("/api/plots/{filename}", tags=["Visualizations"])
 async def get_plot(filename: str):
     """Serve a generated plot image."""
     plots_dir = os.path.join(PROJECT_ROOT, "outputs", "plots")
@@ -325,29 +412,32 @@ async def get_plot(filename: str):
     return FileResponse(file_path, media_type="image/png")
 
 
-@app.get("/api/plots")
+@app.get("/api/plots", tags=["Visualizations"])
 async def list_plots():
-    """List all available plot files."""
+    """List all available visualization plots."""
     plots_dir = os.path.join(PROJECT_ROOT, "outputs", "plots")
     if not os.path.exists(plots_dir):
-        return {"plots": []}
+        return {"plots": [], "total": 0}
 
     plots = [
         {
             "filename": f,
             "url": f"/api/plots/{f}",
             "size": os.path.getsize(os.path.join(plots_dir, f)),
+            "title": f.replace(".png", "").replace("_", " ").title(),
         }
         for f in sorted(os.listdir(plots_dir))
         if f.endswith((".png", ".jpg", ".svg"))
     ]
-    return {"plots": plots}
+    return {"plots": plots, "total": len(plots)}
 
 
 # Try to load model and results on startup
 @app.on_event("startup")
 async def startup_event():
     """Load model and results on startup."""
+    global _startup_time
+    _startup_time = datetime.utcnow()
     _load_model()
     _load_results()
 

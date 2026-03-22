@@ -32,7 +32,7 @@ interface ModelResult {
 
 interface FeatureData { feature_importance: Record<string, number>; top_features: string[] }
 interface PlotInfo { filename: string; url: string; size: number }
-interface PredictionResult { is_fraud: boolean; fraud_probability: number; risk_level: string; confidence: number }
+interface PredictionResult { is_fraud: boolean; fraud_probability: number; risk_level: string; confidence: number; risk_factors: string[]; recommendation: string }
 
 function StatCard({ icon: Icon, label, value, subvalue, color, glow }: {
   icon: React.ElementType; label: string; value: string; subvalue?: string; color: string; glow?: string;
@@ -523,6 +523,25 @@ function App() {
                     <p className="text-xs text-gray-400 mb-1">Model Confidence</p>
                     <p className="text-lg font-bold text-white">{(prediction.confidence * 100).toFixed(2)}%</p>
                   </div>
+                  {prediction.risk_factors && prediction.risk_factors.length > 0 && (
+                    <div className="bg-gray-800/40 rounded-lg p-4">
+                      <p className="text-xs text-gray-400 mb-2">Risk Factors Identified</p>
+                      <ul className="space-y-1.5">
+                        {prediction.risk_factors.map((factor, i) => (
+                          <li key={i} className="flex items-start gap-2 text-sm">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
+                            <span className="text-gray-300">{factor}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {prediction.recommendation && (
+                    <div className={`rounded-lg p-4 border ${prediction.is_fraud ? 'bg-rose-500/5 border-rose-500/20' : 'bg-emerald-500/5 border-emerald-500/20'}`}>
+                      <p className="text-xs text-gray-400 mb-1">Recommendation</p>
+                      <p className={`text-sm font-semibold ${prediction.is_fraud ? 'text-rose-300' : 'text-emerald-300'}`}>{prediction.recommendation}</p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-500">
@@ -560,8 +579,8 @@ function App() {
 
       <footer className="border-t border-gray-800/50 mt-12 py-6">
         <div className="max-w-7xl mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-gray-500">
-          <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-indigo-500" /><span>FraudGuard AI - Intelligent Fraud Detection System v1.0.0</span></div>
-          <div className="flex items-center gap-4"><span>Powered by Machine Learning</span><span>Built with FastAPI + React</span></div>
+          <div className="flex items-center gap-2"><Shield className="w-4 h-4 text-indigo-500" /><span>FraudGuard AI - Intelligent Fraud Detection System v2.0.0</span></div>
+          <div className="flex items-center gap-4"><span>Powered by Machine Learning</span><span>Built with FastAPI + React</span><span>Final Year Project</span></div>
         </div>
       </footer>
     </div>
