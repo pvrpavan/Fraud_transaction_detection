@@ -1,50 +1,45 @@
-# React + TypeScript + Vite
+# FraudGuard AI - Frontend Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript dashboard for the Fraud Transaction Detection system, built with Vite and Tailwind CSS.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 18** with TypeScript
+- **Vite 6** for fast development and builds
+- **Tailwind CSS** for styling
+- **Recharts** for interactive charts
+- **Lucide React** for icons
 
-## Expanding the ESLint configuration
+## Getting Started
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+```bash
+# Install dependencies
+npm install
 
-- Configure the top-level `parserOptions` property like this:
+# Start development server
+npm run dev
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+# Build for production
+npm run build
+
+# Preview production build
+npm run preview
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Environment Variables
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
+Create a `.env` file (already included):
 
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```env
+VITE_API_URL=http://localhost:8000
 ```
+
+Update `VITE_API_URL` to point to your backend API if running on a different host/port.
+
+## Features
+
+- **Overview Tab**: Key metrics, best model stats, confusion matrix, dataset overview
+- **Models Tab**: Model comparison chart, individual model cards with details
+- **Analysis Tab**: Feature importance visualization, class imbalance analysis
+- **Predict Tab**: Real-time fraud prediction form with risk analysis
+- **Plots Tab**: Generated ML pipeline visualizations

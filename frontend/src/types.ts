@@ -50,6 +50,7 @@ export interface SummaryData {
 
 export interface ModelResult {
   model: string;
+  accuracy: number;
   precision: number;
   recall: number;
   f1: number;
@@ -69,6 +70,7 @@ export interface PlotInfo {
   filename: string;
   url: string;
   size: number;
+  title: string;
 }
 
 export interface PredictionResult {

@@ -9,7 +9,8 @@ import json
 import os
 import pickle
 import sys
-from datetime import datetime
+from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -23,6 +24,48 @@ from pydantic import BaseModel, Field
 PROJECT_ROOT = str(Path(__file__).parent.parent.parent)
 sys.path.insert(0, PROJECT_ROOT)
 
+
+# ============================================================
+# State
+# ============================================================
+
+_model_data = None
+_pipeline_results = None
+_startup_time = None
+
+
+def _load_model():
+    """Load the trained model from disk."""
+    global _model_data
+    model_path = os.path.join(PROJECT_ROOT, "outputs", "models", "best_model.pkl")
+    if os.path.exists(model_path):
+        with open(model_path, "rb") as f:
+            _model_data = pickle.load(f)
+        return True
+    return False
+
+
+def _load_results():
+    """Load pipeline results from disk."""
+    global _pipeline_results
+    results_path = os.path.join(PROJECT_ROOT, "outputs", "reports", "pipeline_results.json")
+    if os.path.exists(results_path):
+        with open(results_path, "r") as f:
+            _pipeline_results = json.load(f)
+        return True
+    return False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan: load model and results on startup."""
+    global _startup_time
+    _startup_time = datetime.now(timezone.utc)
+    _load_model()
+    _load_results()
+    yield
+
+
 app = FastAPI(
     title="FraudGuard AI - Fraud Transaction Detection API",
     description=(
@@ -33,6 +76,7 @@ app = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS
@@ -88,41 +132,6 @@ class PredictionResponse(BaseModel):
     recommendation: str = ""
 
 
-# ============================================================
-# State
-# ============================================================
-
-_model_data = None
-_pipeline_results = None
-_startup_time = None
-
-
-def _load_model():
-    """Load the trained model from disk."""
-    global _model_data
-    model_path = os.path.join(PROJECT_ROOT, "outputs", "models", "best_model.pkl")
-    if os.path.exists(model_path):
-        with open(model_path, "rb") as f:
-            _model_data = pickle.load(f)
-        return True
-    return False
-
-
-def _load_results():
-    """Load pipeline results from disk."""
-    global _pipeline_results
-    results_path = os.path.join(PROJECT_ROOT, "outputs", "reports", "pipeline_results.json")
-    if os.path.exists(results_path):
-        with open(results_path, "r") as f:
-            _pipeline_results = json.load(f)
-        return True
-    return False
-
-
-# ============================================================
-# API Routes
-# ============================================================
-
 def _analyze_risk_factors(transaction: TransactionInput) -> list[str]:
     """Analyze transaction characteristics to identify risk factors."""
     factors = []
@@ -167,7 +176,7 @@ async def root():
         "name": "FraudGuard AI - Fraud Transaction Detection API",
         "version": "2.0.0",
         "status": "running",
-        "uptime": str(datetime.utcnow() - _startup_time) if _startup_time else "unknown",
+        "uptime": str(datetime.now(timezone.utc) - _startup_time) if _startup_time else "unknown",
         "model_loaded": _model_data is not None,
         "results_available": _pipeline_results is not None,
         "endpoints": {
@@ -190,7 +199,7 @@ async def health_check():
         "model_status": "loaded" if model_loaded else "not_loaded",
         "results_status": "available" if results_loaded else "not_available",
         "model_name": _model_data.get("model_name") if _model_data else None,
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -430,16 +439,6 @@ async def list_plots():
         if f.endswith((".png", ".jpg", ".svg"))
     ]
     return {"plots": plots, "total": len(plots)}
-
-
-# Try to load model and results on startup
-@app.on_event("startup")
-async def startup_event():
-    """Load model and results on startup."""
-    global _startup_time
-    _startup_time = datetime.utcnow()
-    _load_model()
-    _load_results()
 
 
 if __name__ == "__main__":
