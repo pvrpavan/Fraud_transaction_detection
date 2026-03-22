@@ -495,7 +495,7 @@ class FraudDetectionPipeline:
 
                 # Quick LR evaluation
                 lr = LogisticRegression(
-                    max_iter=500, solver="saga", random_state=42, n_jobs=-1
+                    max_iter=500, solver="saga", random_state=42
                 )
                 lr.fit(X_balanced, y_balanced)
                 y_pred = lr.predict(X_ev)
