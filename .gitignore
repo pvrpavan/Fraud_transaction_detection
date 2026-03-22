@@ -15,9 +15,11 @@ env/
 
 # Data files
 *.h5
-
-# Allow the filtered_rows.csv data file
-!data/filtered_rows.csv
+*.csv
+*.xlsx
+*.xls
+*.json
+data/
 
 # ML outputs
 outputs/
