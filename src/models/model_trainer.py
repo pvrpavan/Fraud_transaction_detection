@@ -56,9 +56,8 @@ class ModelTrainer:
                 "max_iter": 2000,
                 "class_weight": "balanced",
                 "solver": "saga",
-                "penalty": "l2",
+                "l1_ratio": 0,
                 "random_state": 42,
-                "n_jobs": -1,
             },
         },
         "random_forest": {
