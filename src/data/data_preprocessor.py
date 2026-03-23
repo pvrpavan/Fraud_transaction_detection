@@ -216,7 +216,7 @@ class DataPreprocessor:
         self, df: pd.DataFrame, fit: bool = True
     ) -> pd.DataFrame:
         """Encode categorical variables using label encoding."""
-        categorical_cols = df.select_dtypes(include=["object", "category", "str"]).columns
+        categorical_cols = df.select_dtypes(include=["object", "category"]).columns
 
         for col in categorical_cols:
             if fit:
