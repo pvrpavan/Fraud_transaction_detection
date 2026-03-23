@@ -1,0 +1,53 @@
+# Simple Model Configuration - Conservative & Interpretable
+# Use this config for realistic, paper-friendly results (~92-95% accuracy)
+# Run: python run.py --config config/config_simple.yaml
+
+data:
+  raw_data_path: "data/augmented_transactions.csv"
+  max_training_rows: 50000
+  test_size: 0.2
+  random_state: 42
+  chunk_size: 50000
+  start_row: 0
+  # Lower fraud ratio = more realistic, harder problem
+  target_fraud_ratio: 0.30
+
+sampling:
+  strategy: "stratified"
+  fraud_oversample_ratio: 1.0
+
+preprocessing:
+  scaling_method: "standard"
+  # Disable automatic feature selection to keep all basic features
+  feature_selection: true
+  variance_threshold: 0.01
+
+imbalance:
+  # Use class_weight only - no synthetic oversampling
+  method: "class_weight"
+  sampling_strategy: 0.3
+
+models:
+  # Only simple, interpretable models
+  candidates:
+    - "logistic_regression"
+    - "random_forest"
+  # No ensemble - single best model
+  build_ensemble: false
+
+tuning:
+  method: "random"
+  # Minimal tuning
+  n_iter: 5
+  cv_folds: 3
+  scoring: "f1"
+
+evaluation:
+  primary_metric: "f1"
+  shap_analysis: true
+  shap_sample_size: 500
+
+output:
+  model_dir: "outputs/models"
+  plot_dir: "outputs/plots"
+  report_dir: "outputs/reports"
