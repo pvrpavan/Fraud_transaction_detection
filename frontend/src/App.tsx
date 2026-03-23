@@ -78,10 +78,10 @@ function App() {
   if (error) return <ErrorScreen error={error} onRetry={fetchData} />;
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col mesh-gradient">
       <Header activeTab={activeTab} onTabChange={setActiveTab} onRefresh={fetchData} />
 
-      <main className="max-w-7xl mx-auto px-4 py-6 w-full flex-1">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex-1">
         {activeTab === 'overview' && summary && (
           <OverviewTab summary={summary} />
         )}
