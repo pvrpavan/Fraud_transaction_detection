@@ -295,7 +295,7 @@ def main():
     print(f"Original fraud ratio: {len(fraud)/(len(fraud)+len(legit)):.4%}")
 
     print("\nGenerating hard negatives...")
-    hard_negatives = generate_hard_negatives(fraud, n_total=10000)
+    hard_negatives = generate_hard_negatives(fraud, n_total=43000)
     print(f"Generated {len(hard_negatives)} hard negative transactions")
 
     # Remove excluded columns from all rows

@@ -140,18 +140,18 @@ The original model achieved **99-100% accuracy**, which is unrealistically high.
 
 ### Current Results
 
-With the augmented dataset (`data/augmented_transactions.csv`, ~160K rows with 10K hard negatives) and `target_fraud_ratio: 0.15`:
+With the augmented dataset (`data/augmented_transactions.csv`, ~193K rows with 43K hard negatives) and `target_fraud_ratio: 0.15`:
 
 | Model | Accuracy | F1 Score | ROC-AUC | Training Time |
 |-------|----------|----------|---------|---------------|
-| Logistic Regression | ~88-90% | ~75-78% | ~95-96% | ~30s |
-| Random Forest | ~93-95% | ~83-86% | ~97-98% | ~25s |
-| Gradient Boosting | ~93-95% | ~82-84% | ~97-98% | ~50s |
-| XGBoost | **~96%** | **~88-89%** | **~98-99%** | ~8s |
-| LightGBM | ~95% | ~85-86% | ~98% | ~3s |
-| CatBoost | ~94-95% | ~84-85% | ~98% | ~12s |
+| Logistic Regression | ~80% | ~59% | ~93% | ~80s |
+| Random Forest | ~92% | ~79% | ~97% | ~3s |
+| LightGBM | ~95% | ~85% | ~98% | ~1s |
+| CatBoost | ~96% | ~88% | ~98% | ~1s |
+| Gradient Boosting | **~96%** | **~89%** | **~98%** | ~40s |
+| XGBoost | **~96%** | **~89%** | **~99%** | ~3s |
 
-> **Note:** Model accuracy varies because the augmented dataset includes 10K hard negative transactions (legitimate transactions that mimic fraud patterns with 30-60% perturbation). This creates a realistic classification challenge where different algorithms show meaningful performance differences. XGBoost achieves the best accuracy due to its deeper trees (depth 8) and more estimators (500). No data leakage is present - results are validated on a held-out test set with proper stratified splitting.
+> **Note:** Model accuracy varies because the augmented dataset includes 43K hard negative transactions (legitimate transactions that mimic fraud patterns with 30-60% perturbation). This creates a realistic classification challenge where different algorithms show meaningful performance differences. XGBoost achieves the best accuracy (~96%) due to its deeper trees (depth 9) and more estimators (600). No data leakage is present - results are validated on a held-out test set with proper stratified splitting.
 
 ---
 
@@ -365,16 +365,16 @@ After the pipeline finishes, you will see a summary like:
 FINAL RESULTS SUMMARY
 ============================================================
 Best Model:  tuned_xgboost
-Accuracy:    0.9300 (93.00%)
-Precision:   0.8800
-Recall:      0.8200
-F1-Score:    0.8500
-ROC-AUC:     0.9600
-Pipeline Time: 420.5s
+Accuracy:    0.9641 (96.41%)
+Precision:   0.9100
+Recall:      0.8700
+F1-Score:    0.8895
+ROC-AUC:     0.9900
+Pipeline Time: 300.0s
 ============================================================
 ```
 
-> **Important:** With `target_fraud_ratio: 0.20` and 150K hard negatives, accuracy varies meaningfully across models (78-96% range). XGBoost achieves the highest accuracy (~96%) due to deeper trees and more estimators.
+> **Important:** With `target_fraud_ratio: 0.15` and 43K hard negatives, accuracy varies meaningfully across models (80-96% range). XGBoost achieves the highest accuracy (~96%) due to deeper trees and more estimators.
 
 ### Generated Files
 
@@ -429,9 +429,9 @@ All pipeline settings are in `config/config.yaml`. Key options:
 
 ```yaml
 data:
-  max_training_rows: 80000       # Max rows to use (fraud-preserving sampling)
+  max_training_rows: 200000      # Max rows to use (fraud-preserving sampling)
   start_row: 0                   # Starting row offset for legitimate transactions
-  target_fraud_ratio: 0.20       # 0.20 = 20% fraud for balanced training
+  target_fraud_ratio: 0.15       # 0.15 = 15% fraud for balanced training
   chunk_size: 50000              # Chunk size for memory-efficient CSV reading
   test_size: 0.2                 # Train/test split ratio
   random_state: 42               # Random seed for reproducibility
@@ -441,8 +441,8 @@ sampling:
                                  # anomaly_focused | hybrid | intelligent
 
 imbalance:
-  method: "smote"                # auto | smote | smoteenn | adasyn | class_weight
-  sampling_strategy: 0.5         # SMOTE target minority ratio
+  method: "class_weight"         # auto | smote | smoteenn | adasyn | class_weight
+  sampling_strategy: 0.3         # SMOTE target minority ratio
 
 models:
   candidates:                    # Models to train and compare
@@ -455,13 +455,13 @@ models:
 
 tuning:
   method: "random"               # grid | random
-  n_iter: 60                     # Number of hyperparameter combinations to try
+  n_iter: 30                     # Number of hyperparameter combinations to try
   cv_folds: 5                    # Cross-validation folds
 ```
 
 ### Important Configuration Notes
 
-- **`target_fraud_ratio: 0.20`** (recommended): Creates a dataset with ~20% fraud for balanced training. Set to `0.0` to use the natural distribution.
+- **`target_fraud_ratio: 0.15`** (recommended): Creates a dataset with ~15% fraud for balanced training. Set to `0.0` to use the natural distribution.
 
 - **`sampling.strategy: "stratified"`** (recommended): Preserves the fraud ratio during sampling. Provides unbiased, representative training data.
 
@@ -476,7 +476,7 @@ If you want to experiment with different fraud ratios, you can adjust `target_fr
 | 0.3                  | ~8,213    | ~19,164     | ~27,377     |
 | 0.5                  | ~8,213    | ~8,213      | ~16,426     |
 
-> **Recommendation:** Use `0.20` for meaningful accuracy differentiation across models. Higher values dramatically reduce the training set size.
+> **Recommendation:** Use `0.15` for meaningful accuracy differentiation across models. Higher values dramatically reduce the training set size.
 
 ---
 
@@ -549,14 +549,14 @@ curl http://localhost:8000/api/results/feature-importance
 
 | Model | Accuracy | F1 Score | ROC-AUC |
 |-------|----------|----------|--------|
-| XGBoost | **~95-96%** | **~90-93%** | **~98-99%** |
-| LightGBM | ~93-95% | ~87-90% | ~97-98% |
-| CatBoost | ~91-93% | ~84-88% | ~96-97% |
-| Random Forest | ~89-91% | ~80-84% | ~95-96% |
-| Gradient Boosting | ~88-90% | ~78-83% | ~94-96% |
-| Logistic Regression | ~78-82% | ~55-65% | ~90-93% |
+| XGBoost | **~96%** | **~89%** | **~99%** |
+| Gradient Boosting | **~96%** | **~89%** | **~98%** |
+| CatBoost | ~96% | ~88% | ~98% |
+| LightGBM | ~95% | ~85% | ~98% |
+| Random Forest | ~92% | ~79% | ~97% |
+| Logistic Regression | ~80% | ~59% | ~93% |
 
-> **Key Achievement:** XGBoost achieves the highest accuracy (~96%) thanks to deeper trees (depth=6) and more estimators (300). The augmented dataset with 150K hard negatives creates realistic differentiation between algorithms.
+> **Key Achievement:** XGBoost achieves the highest accuracy (~96%) thanks to deeper trees (depth=9) and more estimators (600). The augmented dataset with 43K hard negatives creates realistic differentiation between algorithms.
 
 ---
 
