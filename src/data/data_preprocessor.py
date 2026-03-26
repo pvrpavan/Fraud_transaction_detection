@@ -130,16 +130,6 @@ class DataPreprocessor:
         if existing_id_cols:
             df = df.drop(columns=existing_id_cols)
 
-        # Drop post-transaction balance columns to prevent data leakage.
-        # In real-world fraud detection, predictions must be made BEFORE
-        # the transaction is processed, so post-transaction balances
-        # would not be available at prediction time.
-        post_txn_cols = ["newbalanceOrig", "newbalanceDest"]
-        existing_post_cols = [c for c in post_txn_cols if c in df.columns]
-        if existing_post_cols:
-            logger.info(f"Dropping post-transaction columns: {existing_post_cols}")
-            df = df.drop(columns=existing_post_cols)
-
         rows_removed = initial_rows - len(df)
         if rows_removed > 0:
             logger.info(f"Cleaned {rows_removed:,} duplicate rows")
@@ -158,11 +148,22 @@ class DataPreprocessor:
             # Sqrt transform (moderate skew reduction)
             df["amount_sqrt"] = np.sqrt(df["amount"])
 
-        # NOTE: Balance error features (orig_balance_error, dest_balance_error,
-        # orig_error_flag, dest_error_flag) were removed because they cause
-        # data leakage in the PaySim synthetic dataset. The simulator generates
-        # balance discrepancies only for fraudulent transactions, making these
-        # features near-perfect proxies for the fraud label.
+        # Balance-change features from pre/post transaction balances
+        if "oldbalanceOrg" in df.columns and "newbalanceOrig" in df.columns:
+            df["balance_change_orig"] = df["newbalanceOrig"] - df["oldbalanceOrg"]
+            df["balance_change_ratio_orig"] = df["balance_change_orig"] / (
+                df["oldbalanceOrg"] + 1
+            )
+            df["amount_to_balance_ratio"] = df["amount"] / (
+                df["oldbalanceOrg"] + 1
+            )
+            df["zero_balance_orig"] = (df["newbalanceOrig"] == 0).astype(int)
+
+        if "oldbalanceDest" in df.columns and "newbalanceDest" in df.columns:
+            df["balance_change_dest"] = df["newbalanceDest"] - df["oldbalanceDest"]
+            df["balance_change_ratio_dest"] = df["balance_change_dest"] / (
+                df["oldbalanceDest"] + 1
+            )
 
         # Transaction type interaction features
         if "type" in df.columns and "amount" in df.columns:

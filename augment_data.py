@@ -19,6 +19,9 @@ random.seed(42)
 INPUT_FILE = "filtered_rows.csv"
 OUTPUT_FILE = "data/augmented_transactions.csv"
 
+# Columns to exclude from the output (identifiers that don't help prediction)
+EXCLUDE_COLS = ["nameOrig", "nameDest"]
+
 
 def read_data(path):
     """Read CSV and separate fraud/legit rows."""
@@ -31,6 +34,8 @@ def read_data(path):
                 fraud.append(row)
             else:
                 legit.append(row)
+    # Remove excluded columns from headers
+    headers = [h for h in headers if h not in EXCLUDE_COLS]
     return headers, fraud, legit
 
 
@@ -292,6 +297,12 @@ def main():
     print("\nGenerating hard negatives...")
     hard_negatives = generate_hard_negatives(fraud, n_total=10000)
     print(f"Generated {len(hard_negatives)} hard negative transactions")
+
+    # Remove excluded columns from all rows
+    for row_list in [fraud, legit, hard_negatives]:
+        for row in row_list:
+            for col in EXCLUDE_COLS:
+                row.pop(col, None)
 
     # Combine all data
     all_rows = fraud + legit + hard_negatives
