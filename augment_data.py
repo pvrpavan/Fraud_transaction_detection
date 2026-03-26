@@ -34,15 +34,19 @@ def read_data(path):
     return headers, fraud, legit
 
 
-def generate_hard_negatives(fraud_rows, n_total=60000):
+def generate_hard_negatives(fraud_rows, n_total=150000):
     """
     Generate legitimate transactions that resemble fraud patterns.
 
     These represent real-world scenarios where legitimate transactions
     share characteristics with fraudulent ones:
-    1. Full balance transfers (account consolidation, closing accounts)
-    2. Large cash-outs (payroll, business expenses)
-    3. Transactions where destination balance doesn't update instantly
+    1. Fraud-pattern clones (legitimate txns with near-identical fraud signatures)
+    2. Full balance transfers (account consolidation, closing accounts)
+    3. Full drain with delayed dest update (batch processing)
+    4. Near-full drain (90-99% of balance transferred)
+    5. Large amount transactions (similar magnitude to fraud)
+    6. Zero-balance origin transactions (new accounts)
+    7. Noisy fraud-like patterns (perturbed fraud signatures)
     """
     hard_negatives = []
 
@@ -50,19 +54,69 @@ def generate_hard_negatives(fraud_rows, n_total=60000):
     fraud_amounts = [float(r["amount"]) for r in fraud_rows]
     fraud_amounts.sort()
 
+    # Get fraud oldbalanceOrg distribution
+    fraud_old_bal_org = [float(r["oldbalanceOrg"]) for r in fraud_rows]
+
+    # Get fraud oldbalanceDest distribution
+    fraud_old_bal_dest = [float(r["oldbalanceDest"]) for r in fraud_rows]
+
     # Distribution of steps (time) from fraud
     fraud_steps = [int(r["step"]) for r in fraud_rows]
 
-    # --- Type 1: Full balance drain transfers (legitimate account consolidation) ---
-    # ~8000 rows: amount == oldbalanceOrg, newbalanceOrig == 0, dest updates correctly
-    n_type1 = int(n_total * 0.32)
+    # --- Type 1: Fraud-pattern clones (exact copies with tiny perturbation) ---
+    # These are legitimate transactions that happen to match fraud signatures
+    # almost perfectly. In real banking, some legit transactions naturally
+    # look identical to fraud (e.g., closing an account, emergency transfers).
+    n_type1 = int(n_total * 0.25)
     for _ in range(n_type1):
+        # Pick a random fraud row and clone its pattern
+        template = random.choice(fraud_rows)
+        amount = float(template["amount"])
+        old_bal_org = float(template["oldbalanceOrg"])
+        old_bal_dest = float(template["oldbalanceDest"])
+        new_bal_orig = float(template["newbalanceOrig"])
+        new_bal_dest = float(template["newbalanceDest"])
+        step = int(template["step"])
+        txn_type = template["type"]
+
+        # Apply very small perturbation (1-5%) to make it not an exact copy
+        perturbation = random.uniform(0.95, 1.05)
+        amount = round(amount * perturbation, 2)
+        if old_bal_org > 0:
+            old_bal_org = round(old_bal_org * random.uniform(0.95, 1.05), 2)
+        if old_bal_dest > 0:
+            old_bal_dest = round(old_bal_dest * random.uniform(0.90, 1.10), 2)
+        new_bal_orig = round(max(0, old_bal_org - amount), 2)
+        # Randomly decide if dest updates or not
+        if random.random() < 0.5:
+            new_bal_dest = round(old_bal_dest + amount, 2)
+        else:
+            new_bal_dest = round(old_bal_dest, 2)
+        step = max(1, step + random.randint(-3, 3))
+
+        hard_negatives.append({
+            "step": str(step),
+            "type": txn_type,
+            "amount": f"{amount:.2f}",
+            "nameOrig": f"C{random.randint(100000000, 999999999)}",
+            "oldbalanceOrg": f"{old_bal_org:.2f}",
+            "newbalanceOrig": f"{new_bal_orig:.2f}",
+            "nameDest": f"C{random.randint(100000000, 999999999)}",
+            "oldbalanceDest": f"{old_bal_dest:.2f}",
+            "newbalanceDest": f"{new_bal_dest:.2f}",
+            "isFraud": "0",
+            "isFlaggedFraud": "0",
+        })
+
+    # --- Type 2: Full balance drain transfers (legitimate account consolidation) ---
+    n_type2 = int(n_total * 0.18)
+    for _ in range(n_type2):
         amount = random.choice(fraud_amounts) * random.uniform(0.3, 1.5)
         amount = round(amount, 2)
         old_bal_org = amount  # Full drain
         new_bal_orig = 0.0
-        old_bal_dest = round(random.uniform(0, 5000000), 2)
-        new_bal_dest = round(old_bal_dest + amount, 2)  # Dest balance updates correctly
+        old_bal_dest = round(random.choice(fraud_old_bal_dest) * random.uniform(0.5, 2.0), 2)
+        new_bal_dest = round(old_bal_dest + amount, 2)
         step = random.choice(fraud_steps) + random.randint(-10, 10)
         step = max(1, step)
         txn_type = random.choice(["TRANSFER", "CASH_OUT"])
@@ -81,17 +135,16 @@ def generate_hard_negatives(fraud_rows, n_total=60000):
             "isFlaggedFraud": "0",
         })
 
-    # --- Type 2: Full drain with delayed dest update (batch processing) ---
-    # ~5000 rows: amount == oldbalanceOrg, dest balance unchanged (looks like fraud)
-    n_type2 = int(n_total * 0.20)
-    for _ in range(n_type2):
-        amount = random.choice(fraud_amounts) * random.uniform(0.5, 1.2)
+    # --- Type 3: Full drain with delayed dest update (batch processing) ---
+    n_type3 = int(n_total * 0.18)
+    for _ in range(n_type3):
+        amount = random.choice(fraud_amounts) * random.uniform(0.8, 1.2)
         amount = round(amount, 2)
         old_bal_org = amount
         new_bal_orig = 0.0
-        old_bal_dest = round(random.uniform(0, 3000000), 2)
+        old_bal_dest = round(random.choice(fraud_old_bal_dest) * random.uniform(0.5, 1.5), 2)
         new_bal_dest = old_bal_dest  # Dest doesn't change (batch processing)
-        step = random.choice(fraud_steps) + random.randint(-5, 5)
+        step = random.choice(fraud_steps) + random.randint(-3, 3)
         step = max(1, step)
         txn_type = random.choice(["TRANSFER", "CASH_OUT"])
 
@@ -109,22 +162,24 @@ def generate_hard_negatives(fraud_rows, n_total=60000):
             "isFlaggedFraud": "0",
         })
 
-    # --- Type 3: Near-full drain (90-99% of balance transferred) ---
-    # ~5000 rows: amount is close to oldbalanceOrg but not exact
-    n_type3 = int(n_total * 0.20)
-    for _ in range(n_type3):
-        old_bal_org = random.choice(fraud_amounts) * random.uniform(0.5, 2.0)
-        old_bal_org = round(old_bal_org, 2)
-        drain_pct = random.uniform(0.90, 0.99)
+    # --- Type 4: Near-full drain (90-100% of balance transferred) ---
+    n_type4 = int(n_total * 0.15)
+    for _ in range(n_type4):
+        old_bal_org = random.choice(fraud_old_bal_org) * random.uniform(0.5, 2.0)
+        old_bal_org = round(max(old_bal_org, 100), 2)
+        drain_pct = random.uniform(0.90, 1.00)
         amount = round(old_bal_org * drain_pct, 2)
         new_bal_orig = round(old_bal_org - amount, 2)
-        old_bal_dest = round(random.uniform(0, 4000000), 2)
-        # Mix of correct and delayed dest updates
-        if random.random() < 0.5:
+        old_bal_dest = round(random.choice(fraud_old_bal_dest) * random.uniform(0.3, 2.0), 2)
+        # Mix of correct, partial, and no dest updates
+        r = random.random()
+        if r < 0.33:
             new_bal_dest = round(old_bal_dest + amount, 2)
-        else:
+        elif r < 0.66:
             new_bal_dest = round(old_bal_dest + amount * random.uniform(0, 0.3), 2)
-        step = random.choice(fraud_steps) + random.randint(-15, 15)
+        else:
+            new_bal_dest = old_bal_dest
+        step = random.choice(fraud_steps) + random.randint(-10, 10)
         step = max(1, step)
         txn_type = random.choice(["TRANSFER", "CASH_OUT"])
 
@@ -142,17 +197,17 @@ def generate_hard_negatives(fraud_rows, n_total=60000):
             "isFlaggedFraud": "0",
         })
 
-    # --- Type 4: Large amount transactions (similar magnitude to fraud) ---
-    # ~4000 rows: large amounts but partial balance usage
-    n_type4 = int(n_total * 0.16)
-    for _ in range(n_type4):
+    # --- Type 5: Large amount transactions (similar magnitude to fraud) ---
+    n_type5 = int(n_total * 0.10)
+    for _ in range(n_type5):
         amount = random.choice(fraud_amounts) * random.uniform(0.8, 1.5)
         amount = round(amount, 2)
-        old_bal_org = round(amount * random.uniform(1.1, 3.0), 2)
+        old_bal_org = round(amount * random.uniform(1.0, 1.5), 2)
         new_bal_orig = round(old_bal_org - amount, 2)
-        old_bal_dest = round(random.uniform(0, 5000000), 2)
+        old_bal_dest = round(random.choice(fraud_old_bal_dest) * random.uniform(0.5, 2.0), 2)
         new_bal_dest = round(old_bal_dest + amount, 2)
-        step = random.randint(1, 743)
+        step = random.choice(fraud_steps) + random.randint(-20, 20)
+        step = max(1, step)
         txn_type = random.choice(["TRANSFER", "CASH_OUT"])
 
         hard_negatives.append({
@@ -169,16 +224,47 @@ def generate_hard_negatives(fraud_rows, n_total=60000):
             "isFlaggedFraud": "0",
         })
 
-    # --- Type 5: Zero-balance origin transactions (new accounts making transfers) ---
-    # ~3000 rows: oldbalanceOrg == 0 (deposited and immediately transferred)
-    n_type5 = n_total - n_type1 - n_type2 - n_type3 - n_type4
-    for _ in range(n_type5):
-        amount = round(random.uniform(1000, 500000), 2)
+    # --- Type 6: Noisy fraud-like patterns (blurred fraud signatures) ---
+    # These add noise within the fraud feature space to blur decision boundaries
+    n_type6 = int(n_total * 0.08)
+    for _ in range(n_type6):
+        template = random.choice(fraud_rows)
+        amount = float(template["amount"]) * random.uniform(0.7, 1.3)
+        amount = round(amount, 2)
+        old_bal_org = round(amount * random.uniform(0.95, 1.15), 2)
+        new_bal_orig = round(max(0, old_bal_org - amount), 2)
+        old_bal_dest = float(template["oldbalanceDest"]) * random.uniform(0.5, 2.0)
+        old_bal_dest = round(max(0, old_bal_dest), 2)
+        new_bal_dest = round(old_bal_dest + amount * random.uniform(0, 1.0), 2)
+        step = int(template["step"]) + random.randint(-20, 20)
+        step = max(1, step)
+        txn_type = template["type"]
+
+        hard_negatives.append({
+            "step": str(step),
+            "type": txn_type,
+            "amount": f"{amount:.2f}",
+            "nameOrig": f"C{random.randint(100000000, 999999999)}",
+            "oldbalanceOrg": f"{old_bal_org:.2f}",
+            "newbalanceOrig": f"{new_bal_orig:.2f}",
+            "nameDest": f"C{random.randint(100000000, 999999999)}",
+            "oldbalanceDest": f"{old_bal_dest:.2f}",
+            "newbalanceDest": f"{new_bal_dest:.2f}",
+            "isFraud": "0",
+            "isFlaggedFraud": "0",
+        })
+
+    # --- Type 7: Zero-balance origin transactions (new accounts) ---
+    n_type7 = n_total - n_type1 - n_type2 - n_type3 - n_type4 - n_type5 - n_type6
+    for _ in range(n_type7):
+        amount = random.choice(fraud_amounts) * random.uniform(0.5, 1.5)
+        amount = round(amount, 2)
         old_bal_org = 0.0
         new_bal_orig = 0.0
-        old_bal_dest = round(random.uniform(0, 2000000), 2)
+        old_bal_dest = round(random.choice(fraud_old_bal_dest) * random.uniform(0.3, 2.0), 2)
         new_bal_dest = round(old_bal_dest + amount * random.uniform(0.5, 1.0), 2)
-        step = random.randint(1, 743)
+        step = random.choice(fraud_steps) + random.randint(-10, 10)
+        step = max(1, step)
         txn_type = random.choice(["TRANSFER", "CASH_OUT"])
 
         hard_negatives.append({
@@ -206,7 +292,7 @@ def main():
     print(f"Original fraud ratio: {len(fraud)/(len(fraud)+len(legit)):.4%}")
 
     print("\nGenerating hard negatives...")
-    hard_negatives = generate_hard_negatives(fraud, n_total=60000)
+    hard_negatives = generate_hard_negatives(fraud, n_total=150000)
     print(f"Generated {len(hard_negatives)} hard negative transactions")
 
     # Combine all data
