@@ -59,9 +59,9 @@ tuning:
   # Method: grid, random, bayesian
   method: "random"
   # Number of iterations for random/bayesian search
-  n_iter: 30
+  n_iter: 10
   # Cross-validation folds
-  cv_folds: 5
+  cv_folds: 3
   # Scoring metric for optimization
   scoring: "f1"
 
