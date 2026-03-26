@@ -7,6 +7,7 @@ automatically select the best model for fraud detection.
 
 import logging
 import time
+import warnings
 from typing import Optional
 
 import numpy as np
@@ -88,16 +89,16 @@ class ModelTrainer:
         "xgboost": {
             "class_fn": _get_xgboost,
             "params": {
-                "n_estimators": 300,
-                "max_depth": 6,
-                "learning_rate": 0.08,
-                "subsample": 0.85,
-                "colsample_bytree": 0.85,
+                "n_estimators": 500,
+                "max_depth": 8,
+                "learning_rate": 0.1,
+                "subsample": 0.9,
+                "colsample_bytree": 0.9,
                 "scale_pos_weight": 3,
-                "min_child_weight": 5,
-                "gamma": 0.1,
-                "reg_alpha": 0.1,
-                "reg_lambda": 1.0,
+                "min_child_weight": 3,
+                "gamma": 0.05,
+                "reg_alpha": 0.05,
+                "reg_lambda": 0.5,
                 "random_state": 42,
                 "n_jobs": -1,
                 "eval_metric": "logloss",
@@ -249,15 +250,17 @@ class ModelTrainer:
         )
         roc_auc = roc_auc_score(y_val, y_prob)
 
-        # Cross-validation score
-        cv_scores = cross_val_score(
-            model_class(**config["params"]),
-            X_train,
-            y_train,
-            cv=min(self.cv_folds, 3),
-            scoring=self.scoring,
-            n_jobs=-1,
-        )
+        # Cross-validation score (suppress feature name warnings from LightGBM)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*does not have valid feature names.*")
+            cv_scores = cross_val_score(
+                model_class(**config["params"]),
+                X_train,
+                y_train,
+                cv=min(self.cv_folds, 3),
+                scoring=self.scoring,
+                n_jobs=-1,
+            )
 
         return {
             "model": model,

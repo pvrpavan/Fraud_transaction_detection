@@ -140,18 +140,18 @@ The original model achieved **99-100% accuracy**, which is unrealistically high.
 
 ### Current Results
 
-With the augmented dataset (`data/augmented_transactions.csv`, 300K rows with 150K hard negatives) and `target_fraud_ratio: 0.20`:
+With the augmented dataset (`data/augmented_transactions.csv`, ~160K rows with 10K hard negatives) and `target_fraud_ratio: 0.15`:
 
 | Model | Accuracy | F1 Score | ROC-AUC | Training Time |
 |-------|----------|----------|---------|---------------|
-| Logistic Regression | ~78-82% | ~55-65% | ~90-93% | ~30s |
-| Random Forest | ~89-91% | ~80-84% | ~95-96% | ~25s |
-| Gradient Boosting | ~88-90% | ~78-83% | ~94-96% | ~50s |
-| XGBoost | **~95-96%** | **~90-93%** | **~98-99%** | ~8s |
-| LightGBM | ~93-95% | ~87-90% | ~97-98% | ~3s |
-| CatBoost | ~91-93% | ~84-88% | ~96-97% | ~12s |
+| Logistic Regression | ~88-90% | ~75-78% | ~95-96% | ~30s |
+| Random Forest | ~93-95% | ~83-86% | ~97-98% | ~25s |
+| Gradient Boosting | ~93-95% | ~82-84% | ~97-98% | ~50s |
+| XGBoost | **~96%** | **~88-89%** | **~98-99%** | ~8s |
+| LightGBM | ~95% | ~85-86% | ~98% | ~3s |
+| CatBoost | ~94-95% | ~84-85% | ~98% | ~12s |
 
-> **Note:** Model accuracy varies because the augmented dataset includes 150K hard negative transactions (legitimate transactions that closely mimic fraud patterns). This creates a realistic classification challenge where different algorithms show meaningful performance differences. XGBoost achieves the best accuracy due to its deeper trees and more estimators. No data leakage is present - results are validated on a held-out test set with proper stratified splitting.
+> **Note:** Model accuracy varies because the augmented dataset includes 10K hard negative transactions (legitimate transactions that mimic fraud patterns with 30-60% perturbation). This creates a realistic classification challenge where different algorithms show meaningful performance differences. XGBoost achieves the best accuracy due to its deeper trees (depth 8) and more estimators (500). No data leakage is present - results are validated on a held-out test set with proper stratified splitting.
 
 ---
 

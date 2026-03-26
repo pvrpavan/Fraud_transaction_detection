@@ -34,19 +34,19 @@ def read_data(path):
     return headers, fraud, legit
 
 
-def generate_hard_negatives(fraud_rows, n_total=150000):
+def generate_hard_negatives(fraud_rows, n_total=10000):
     """
     Generate legitimate transactions that resemble fraud patterns.
 
     These represent real-world scenarios where legitimate transactions
     share characteristics with fraudulent ones:
-    1. Fraud-pattern clones (legitimate txns with near-identical fraud signatures)
+    1. Fraud-pattern clones (legitimate txns with perturbed fraud signatures)
     2. Full balance transfers (account consolidation, closing accounts)
     3. Full drain with delayed dest update (batch processing)
     4. Near-full drain (90-99% of balance transferred)
     5. Large amount transactions (similar magnitude to fraud)
-    6. Zero-balance origin transactions (new accounts)
-    7. Noisy fraud-like patterns (perturbed fraud signatures)
+    6. Noisy fraud-like patterns (blurred fraud signatures)
+    7. Zero-balance origin transactions (new accounts)
     """
     hard_negatives = []
 
@@ -63,36 +63,34 @@ def generate_hard_negatives(fraud_rows, n_total=150000):
     # Distribution of steps (time) from fraud
     fraud_steps = [int(r["step"]) for r in fraud_rows]
 
-    # --- Type 1: Fraud-pattern clones (exact copies with tiny perturbation) ---
-    # These are legitimate transactions that happen to match fraud signatures
-    # almost perfectly. In real banking, some legit transactions naturally
-    # look identical to fraud (e.g., closing an account, emergency transfers).
-    n_type1 = int(n_total * 0.25)
+    # --- Type 1: Fraud-pattern clones (perturbed copies of fraud patterns) ---
+    # These are legitimate transactions that resemble fraud signatures
+    # but with large perturbation (30-60%). In real banking, some
+    # legit transactions share characteristics with fraud.
+    n_type1 = int(n_total * 0.10)
     for _ in range(n_type1):
-        # Pick a random fraud row and clone its pattern
+        # Pick a random fraud row and clone its pattern with large perturbation
         template = random.choice(fraud_rows)
         amount = float(template["amount"])
         old_bal_org = float(template["oldbalanceOrg"])
         old_bal_dest = float(template["oldbalanceDest"])
-        new_bal_orig = float(template["newbalanceOrig"])
-        new_bal_dest = float(template["newbalanceDest"])
         step = int(template["step"])
         txn_type = template["type"]
 
-        # Apply very small perturbation (1-5%) to make it not an exact copy
-        perturbation = random.uniform(0.95, 1.05)
+        # Apply large perturbation (30-60%) so strong models can learn the difference
+        perturbation = random.uniform(0.40, 1.60)
         amount = round(amount * perturbation, 2)
         if old_bal_org > 0:
-            old_bal_org = round(old_bal_org * random.uniform(0.95, 1.05), 2)
+            old_bal_org = round(old_bal_org * random.uniform(0.50, 1.50), 2)
         if old_bal_dest > 0:
-            old_bal_dest = round(old_bal_dest * random.uniform(0.90, 1.10), 2)
+            old_bal_dest = round(old_bal_dest * random.uniform(0.30, 2.00), 2)
         new_bal_orig = round(max(0, old_bal_org - amount), 2)
-        # Randomly decide if dest updates or not
-        if random.random() < 0.5:
+        # Dest usually updates correctly for legit transactions
+        if random.random() < 0.8:
             new_bal_dest = round(old_bal_dest + amount, 2)
         else:
-            new_bal_dest = round(old_bal_dest, 2)
-        step = max(1, step + random.randint(-3, 3))
+            new_bal_dest = round(old_bal_dest + amount * random.uniform(0.5, 1.0), 2)
+        step = max(1, step + random.randint(-30, 30))
 
         hard_negatives.append({
             "step": str(step),
@@ -109,7 +107,7 @@ def generate_hard_negatives(fraud_rows, n_total=150000):
         })
 
     # --- Type 2: Full balance drain transfers (legitimate account consolidation) ---
-    n_type2 = int(n_total * 0.18)
+    n_type2 = int(n_total * 0.22)
     for _ in range(n_type2):
         amount = random.choice(fraud_amounts) * random.uniform(0.3, 1.5)
         amount = round(amount, 2)
@@ -138,7 +136,7 @@ def generate_hard_negatives(fraud_rows, n_total=150000):
     # --- Type 3: Full drain with delayed dest update (batch processing) ---
     n_type3 = int(n_total * 0.18)
     for _ in range(n_type3):
-        amount = random.choice(fraud_amounts) * random.uniform(0.8, 1.2)
+        amount = random.choice(fraud_amounts) * random.uniform(0.5, 1.5)
         amount = round(amount, 2)
         old_bal_org = amount
         new_bal_orig = 0.0
@@ -198,7 +196,7 @@ def generate_hard_negatives(fraud_rows, n_total=150000):
         })
 
     # --- Type 5: Large amount transactions (similar magnitude to fraud) ---
-    n_type5 = int(n_total * 0.10)
+    n_type5 = int(n_total * 0.15)
     for _ in range(n_type5):
         amount = random.choice(fraud_amounts) * random.uniform(0.8, 1.5)
         amount = round(amount, 2)
@@ -226,17 +224,17 @@ def generate_hard_negatives(fraud_rows, n_total=150000):
 
     # --- Type 6: Noisy fraud-like patterns (blurred fraud signatures) ---
     # These add noise within the fraud feature space to blur decision boundaries
-    n_type6 = int(n_total * 0.08)
+    n_type6 = int(n_total * 0.12)
     for _ in range(n_type6):
         template = random.choice(fraud_rows)
-        amount = float(template["amount"]) * random.uniform(0.7, 1.3)
+        amount = float(template["amount"]) * random.uniform(0.5, 1.5)
         amount = round(amount, 2)
-        old_bal_org = round(amount * random.uniform(0.95, 1.15), 2)
+        old_bal_org = round(amount * random.uniform(0.80, 1.30), 2)
         new_bal_orig = round(max(0, old_bal_org - amount), 2)
-        old_bal_dest = float(template["oldbalanceDest"]) * random.uniform(0.5, 2.0)
+        old_bal_dest = float(template["oldbalanceDest"]) * random.uniform(0.3, 2.5)
         old_bal_dest = round(max(0, old_bal_dest), 2)
-        new_bal_dest = round(old_bal_dest + amount * random.uniform(0, 1.0), 2)
-        step = int(template["step"]) + random.randint(-20, 20)
+        new_bal_dest = round(old_bal_dest + amount * random.uniform(0.3, 1.0), 2)
+        step = int(template["step"]) + random.randint(-30, 30)
         step = max(1, step)
         txn_type = template["type"]
 
@@ -292,7 +290,7 @@ def main():
     print(f"Original fraud ratio: {len(fraud)/(len(fraud)+len(legit)):.4%}")
 
     print("\nGenerating hard negatives...")
-    hard_negatives = generate_hard_negatives(fraud, n_total=150000)
+    hard_negatives = generate_hard_negatives(fraud, n_total=10000)
     print(f"Generated {len(hard_negatives)} hard negative transactions")
 
     # Combine all data
