@@ -43,7 +43,7 @@ export function LogoFull({ className = '' }: { className?: string }) {
       </div>
       <div>
         <h1 className="text-lg font-bold text-white tracking-tight">
-          Fraud<span className="gradient-text">Guard</span> AI
+          Fraud<span className="gradient-text">Guard</span>
         </h1>
         <p className="text-[10px] text-gray-500 font-medium tracking-wider uppercase -mt-0.5">
           Intelligent Transaction Monitoring

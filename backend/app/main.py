@@ -1,5 +1,5 @@
 """
-FraudGuard AI - Fraud Transaction Detection API
+FraudGuard - Fraud Transaction Detection API
 
 Production-grade FastAPI backend serving the fraud detection model results,
 predictions, and dashboard data. Built as a final year college project.
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="FraudGuard AI - Fraud Transaction Detection API",
+    title="FraudGuard - Fraud Transaction Detection API",
     description=(
         "Production-grade ML-powered fraud detection system using an ensemble of "
         "6 machine learning models with SHAP explainability. Built as a final year "
@@ -173,7 +173,7 @@ def _get_recommendation(is_fraud: bool, probability: float, risk_level: str) -> 
 async def root():
     """API health check and system overview."""
     return {
-        "name": "FraudGuard AI - Fraud Transaction Detection API",
+        "name": "FraudGuard - Fraud Transaction Detection API",
         "version": "2.0.0",
         "status": "running",
         "uptime": str(datetime.now(timezone.utc) - _startup_time) if _startup_time else "unknown",

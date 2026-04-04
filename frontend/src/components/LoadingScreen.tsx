@@ -12,7 +12,7 @@ export function LoadingScreen() {
           <div className="absolute inset-0 w-24 h-24 mx-auto rounded-2xl bg-indigo-500/20 animate-ping" />
         </div>
         <h2 className="text-2xl font-bold text-white mb-2">
-          Fraud<span className="gradient-text">Guard</span> AI
+          Fraud<span className="gradient-text">Guard</span>
         </h2>
         <p className="text-sm text-gray-400 mb-1">Intelligent Transaction Monitoring</p>
         <div className="flex items-center justify-center gap-2 mt-4 mb-6">

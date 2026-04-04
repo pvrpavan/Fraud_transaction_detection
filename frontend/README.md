@@ -1,4 +1,4 @@
-# FraudGuard AI - Frontend Dashboard
+# FraudGuard - Frontend Dashboard
 
 React + TypeScript dashboard for the Fraud Transaction Detection system, built with Vite and Tailwind CSS.
 

@@ -1,7 +1,7 @@
 # Fraud Transaction Detection System - Staff Presentation Guide
 
 ## Project Title
-**FraudGuard AI: Intelligent Fraud Transaction Detection System Using Machine Learning**
+**FraudGuard: Intelligent Fraud Transaction Detection System Using Machine Learning**
 
 ---
 

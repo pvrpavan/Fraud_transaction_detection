@@ -1,4 +1,4 @@
-# FraudGuard AI - Intelligent Fraud Transaction Detection System
+# FraudGuard - Intelligent Fraud Transaction Detection System
 
 A production-grade machine learning system for detecting fraudulent financial transactions. Built with a 13-stage ML pipeline, FastAPI backend, and React dashboard.
 

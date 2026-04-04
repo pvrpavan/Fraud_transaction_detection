@@ -10,7 +10,7 @@ export function Footer() {
             <Logo className="w-6 h-6" />
             <div>
               <span className="text-sm font-semibold text-gray-300">
-                Fraud<span className="gradient-text">Guard</span> AI
+                Fraud<span className="gradient-text">Guard</span>
               </span>
               <span className="text-[10px] text-gray-600 ml-2 bg-gray-800/60 px-1.5 py-0.5 rounded">v2.0.0</span>
             </div>

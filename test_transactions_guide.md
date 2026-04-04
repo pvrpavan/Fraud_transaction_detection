@@ -1,4 +1,4 @@
-# Test Transaction Examples - FraudGuard AI
+# Test Transaction Examples - FraudGuard
 
 This document provides **15 extraordinary edge-case test transactions** that demonstrate the fraud detection model's real intelligence. Each case has been verified against the trained ensemble model (~96.6% accuracy).
 
